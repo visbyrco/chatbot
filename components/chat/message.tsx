@@ -319,16 +319,23 @@ const PurePreviewMessage = ({
       );
     }
 
-    if (type === "tool-writeDocument") {
+    if (
+      type === "tool-writeFile" ||
+      type === "tool-writeDocument" ||
+      type === "tool-editFile" ||
+      type === "tool-editDocument"
+    ) {
       const { toolCallId } = part;
 
       if (part.output && "error" in part.output) {
+        const isEdit = type === "tool-editFile" || type === "tool-editDocument";
         return (
           <div
             className="rounded-lg border border-error/20 bg-error/10 p-4 text-error"
             key={toolCallId}
           >
-            Error writing document: {String(part.output.error)}
+            Error {isEdit ? "editing" : "writing"} file:{" "}
+            {String(part.output.error)}
           </div>
         );
       }
@@ -345,6 +352,21 @@ const PurePreviewMessage = ({
           />
         </div>
       );
+    }
+
+    if (type === "tool-readFile") {
+      const { toolCallId } = part;
+      if (part.output && "error" in part.output) {
+        return (
+          <div
+            className="rounded-lg border border-error/20 bg-error/10 p-4 text-error"
+            key={toolCallId}
+          >
+            Error reading file: {String(part.output.error)}
+          </div>
+        );
+      }
+      return null;
     }
 
     if (type === "tool-searchWeb") {

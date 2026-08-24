@@ -316,7 +316,7 @@ const createFixErrorTool = (
     send({
       parts: [
         {
-          text: `Fix the error in the existing script${documentId ? ` (id: ${documentId})` : ""} using writeDocument. Do not create a new script. Console error:\n\n${consoleOutput}`,
+          text: `Fix the error in the existing script${documentId ? ` (id: ${documentId})` : ""} using editFile. Do not create a new script. Console error:\n\n${consoleOutput}`,
           type: "text",
         },
       ],
