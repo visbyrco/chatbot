@@ -54,7 +54,7 @@ try {
   _conn = postgres(process.env.POSTGRES_URL, { max: 1 });
   const db = drizzle(_conn);
   console.log("Running migrations...");
-  await migrate(db, { migrationsFolder: "./lib/db/migrations" });
+  await migrate(db, { migrationsFolder: "./apps/web/lib/db/migrations" });
   console.log("Migrations complete");
 } finally {
   try { if (_conn) await _conn.end(); } catch {}
@@ -64,4 +64,4 @@ MIGRATE_EOF
   node /app/migrate.mjs
 fi
 echo "Starting application..."
-exec node server.js
+exec node apps/web/server.js

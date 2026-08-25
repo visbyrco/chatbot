@@ -10,7 +10,13 @@
     "indentWidth": 2
   },
   "files": {
-    "includes": ["**/*", "!components/ui", "!lib/db/migrations"]
+    "includes": [
+      "apps/**/*",
+      "packages/**/*",
+      "!**/components/ui",
+      "!**/lib/db/migrations",
+      "!**/migrations"
+    ]
   },
   "linter": {
     "rules": {

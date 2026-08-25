@@ -3,6 +3,11 @@ node_modules
 .pnp.js
 coverage
 .next/
+apps/web/.next/
+apps/web/out/
+apps/android/.expo/
+apps/android/dist/
+packages/*/dist/
 out/
 build
 .DS_Store

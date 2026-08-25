@@ -227,7 +227,7 @@ export const ReasoningContent = memo(
         }
       });
       return () => cancelAnimationFrame(rafId);
-    }, [children, isStreaming]);
+    }, [isStreaming]);
 
     if (!isOpen) {
       return null;

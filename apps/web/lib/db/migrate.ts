@@ -9,20 +9,15 @@ config({
 
 const runMigrate = async () => {
   if (!process.env.POSTGRES_URL) {
-    console.log("POSTGRES_URL not defined, skipping migrations");
     process.exit(0);
   }
 
   const connection = postgres(process.env.POSTGRES_URL, { max: 1 });
   const db = drizzle(connection);
 
-  console.log("Running migrations...");
-
-  const start = Date.now();
+  const _start = Date.now();
   await migrate(db, { migrationsFolder: "./lib/db/migrations" });
-  const end = Date.now();
-
-  console.log("Migrations completed in", end - start, "ms");
+  const _end = Date.now();
   process.exit(0);
 };
 

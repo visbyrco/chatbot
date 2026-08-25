@@ -1,8 +1,14 @@
 node_modules
 .next
+apps/web/.next
+apps/android/.expo
+apps/android/dist
+.turbo
 .git
 uploads
 *.md
 tests
+apps/web/tests
 .env*
 .env.local
+packages/*/dist

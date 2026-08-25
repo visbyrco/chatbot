@@ -33,6 +33,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: apps/web/Dockerfile
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Pushes to Docker Hub on 'push' events, but only builds/tests on 'pull_request'

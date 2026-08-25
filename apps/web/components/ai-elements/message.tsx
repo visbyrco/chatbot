@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 import type { MessageResponseProps } from "./message-response";
 
-const MessageResponse = dynamic<MessageResponseProps>(
+const _MessageResponse = dynamic<MessageResponseProps>(
   () => import("./message-response").then((m) => m.MessageResponse),
   { loading: () => null, ssr: false }
 );

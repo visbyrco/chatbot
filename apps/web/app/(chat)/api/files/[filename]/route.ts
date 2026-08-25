@@ -78,7 +78,7 @@ export async function GET(
   // Ownership check via sidecar metadata
   const metaPath = join(uploadDir, ".meta", `${safeName}.json`);
   let isOwner = false;
-  let metaExists = false;
+  let _metaExists = false;
   let storedContentType: string | undefined;
   try {
     const metaRaw = await readFile(metaPath, "utf8");
@@ -86,7 +86,7 @@ export async function GET(
       userId?: string;
       contentType?: string;
     };
-    metaExists = true;
+    _metaExists = true;
     storedContentType = meta.contentType;
     if (meta.userId && meta.userId === session.user.id) {
       isOwner = true;

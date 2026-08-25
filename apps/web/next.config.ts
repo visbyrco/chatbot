@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type { NextConfig } from "next";
 
 const basePath = process.env.IS_DEMO === "1" ? "/demo" : "";
@@ -102,6 +104,12 @@ const nextConfig: NextConfig = {
     incomingRequests: false,
   },
   output: "standalone",
+  // Keep tracing root at repo root for monorepo (apps/web -> ../..).
+  // The path import is only for this static config; ignore for NFT tracing.
+  outputFileTracingRoot: path.join(
+    /* turbopackIgnore: true */ import.meta.dirname,
+    "../.."
+  ),
   poweredByHeader: false,
   reactCompiler: true,
 };

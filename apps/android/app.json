@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "chatbot",
+    "slug": "chatbot",
+    "scheme": "chatbot",
+    "platforms": ["android"],
+    "android": {
+      "package": "com.t3.chatbot",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "extra": {
+      "apiBaseUrl": "http://localhost:3000"
+    }
+  }
+}

@@ -1,8 +1,9 @@
 {
-  "extends": "./tsconfig.base.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@repo/shared": ["../../packages/shared/src"]
     }
   },
   "include": [
@@ -13,6 +14,5 @@
     "next.config.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"],
-  "references": [{ "path": "./apps/web" }, { "path": "./packages/shared" }]
+  "exclude": ["node_modules"]
 }

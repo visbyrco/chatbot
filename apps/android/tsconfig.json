@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@repo/shared": ["../../packages/shared/src"]
+    },
+    "jsx": "react-jsx"
+  },
+  "include": ["src", "app.json", "app.tsx"],
+  "exclude": ["node_modules"]
+}
