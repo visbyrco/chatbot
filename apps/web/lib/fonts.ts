@@ -141,7 +141,7 @@ export const FONT_ROLES: Record<FontRole, FontRoleConfig> = {
   body: {
     cookieName: "font-body",
     cssVar: "--app-font-body",
-    defaultId: "montserrat",
+    defaultId: "inter-tight",
     description: "Main interface and body text.",
     fonts: SANS_FONTS,
     label: "Body font",
