@@ -6,6 +6,7 @@ FROM base AS deps
 WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json turbo.json ./
 COPY apps/web/package.json ./apps/web/package.json
+COPY apps/android/package.json ./apps/android/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile

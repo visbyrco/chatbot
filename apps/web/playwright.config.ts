@@ -101,6 +101,7 @@ export default defineConfig({
   /* Run your local dev server before starting the tests */
   webServer: {
     command: "pnpm dev",
+    cwd: import.meta.dirname,
     env: {
       PLAYWRIGHT: "True",
     },
