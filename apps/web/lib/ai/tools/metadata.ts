@@ -1,7 +1,8 @@
 export const TOOL_IDS = [
   "getWeather",
-  "writeDocument",
-  "editDocument",
+  "writeFile",
+  "editFile",
+  "readFile",
   "searchWeb",
   "fetchUrl",
   "runPython",
@@ -9,16 +10,23 @@ export const TOOL_IDS = [
 
 export type ToolId = (typeof TOOL_IDS)[number];
 
-export const TOOL_IDS_SET: ReadonlySet<string> = new Set(TOOL_IDS);
+// Legacy aliases kept for backward compat with stored messages / approval flows
+export const LEGACY_TOOL_IDS = ["writeDocument", "editDocument"] as const;
 
-export const DOCUMENT_TOOL_IDS = ["writeDocument", "editDocument"] as const;
+export const TOOL_IDS_SET: ReadonlySet<string> = new Set([
+  ...TOOL_IDS,
+  ...LEGACY_TOOL_IDS,
+]);
+
+export const FILE_TOOL_IDS = ["writeFile", "editFile", "readFile"] as const;
+export const DOCUMENT_TOOL_IDS = ["writeFile", "editFile"] as const;
 
 export type ToolMetadata = { label: string; description: string };
 
 export const TOOL_METADATA: Record<ToolId, ToolMetadata> = {
-  editDocument: {
-    description: "Make targeted edits to an existing artifact.",
-    label: "Edit document",
+  editFile: {
+    description: "Make targeted edits to an existing file.",
+    label: "Edit file",
   },
   fetchUrl: {
     description: "Read the content of a web page from its URL.",
@@ -28,6 +36,10 @@ export const TOOL_METADATA: Record<ToolId, ToolMetadata> = {
     description: "Get current weather at a location.",
     label: "Weather",
   },
+  readFile: {
+    description: "Read the content of an existing file.",
+    label: "Read file",
+  },
   runPython: {
     description: "Run Python code to solve math, logic, and data problems.",
     label: "Python",
@@ -36,9 +48,9 @@ export const TOOL_METADATA: Record<ToolId, ToolMetadata> = {
     description: "Search the web for up-to-date information.",
     label: "Web search",
   },
-  writeDocument: {
-    description: "Create or overwrite scripts, documents, and spreadsheets.",
-    label: "Write document",
+  writeFile: {
+    description: "Create or overwrite files, scripts, and spreadsheets.",
+    label: "Write file",
   },
 };
 

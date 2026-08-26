@@ -24,6 +24,15 @@ const fetcher = async (url: string) => {
 type ConversationInfo = {
   artifacts: Array<{ id: string; kind: string; title: string }>;
   attachments: Array<{ contentType: string; name: string; url: string }>;
+  files?: Array<{
+    contentType?: string | null;
+    id?: string;
+    kind: string;
+    name: string;
+    title?: string;
+    type: "artifact" | "upload";
+    url: string;
+  }>;
   byModel: Array<{
     cacheMissInputTokens: number;
     cachedInputTokens: number;
@@ -126,53 +135,72 @@ export function ConversationInfoDrawer({
                 </div>
               ) : null}
             </section>
-            <InfoSection
-              count={data?.attachments?.length ?? 0}
-              icon={<PaperclipIcon size={15} />}
-              title="Attachments"
-            >
-              {data?.attachments?.length ? (
-                data.attachments.map((attachment) => (
-                  <a
-                    className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
-                    href={attachment.url}
-                    key={attachment.url || attachment.name}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    <FileIcon size={15} />
-                    <span className="truncate">{attachment.name}</span>
-                  </a>
-                ))
-              ) : (
-                <EmptyState text="No files uploaded" />
-              )}
-            </InfoSection>
-            <InfoSection
-              count={data?.artifacts?.length ?? 0}
-              icon={<CodeIcon size={15} />}
-              title="Artifacts"
-            >
-              {data?.artifacts?.length ? (
-                data.artifacts.map((artifact) => (
-                  <a
-                    className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
-                    href={`${BASE_PATH}/api/document?id=${artifact.id}`}
-                    key={artifact.id}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    <FileIcon size={15} />
-                    <span className="truncate">{artifact.title}</span>
-                    <span className="ml-auto text-[10px] uppercase text-muted-foreground">
-                      {artifact.kind}
-                    </span>
-                  </a>
-                ))
-              ) : (
-                <EmptyState text="No artifacts created" />
-              )}
-            </InfoSection>
+            {(() => {
+              const unifiedFiles: Array<{
+                key: string;
+                kind: string;
+                name: string;
+                type: "artifact" | "upload";
+                url: string;
+              }> = data?.files
+                ? data.files.map((f) => ({
+                    key: f.id ?? f.url ?? f.name,
+                    kind: f.kind,
+                    name: f.name,
+                    type: f.type,
+                    url:
+                      f.type === "artifact" && f.id
+                        ? `${BASE_PATH}/api/document?id=${f.id}`
+                        : f.url,
+                  }))
+                : [
+                    ...(data?.attachments ?? []).map((a) => ({
+                      key: a.url || a.name,
+                      kind: "upload",
+                      name: a.name,
+                      type: "upload" as const,
+                      url: a.url,
+                    })),
+                    ...(data?.artifacts ?? []).map((a) => ({
+                      key: a.id,
+                      kind: a.kind,
+                      name: a.title,
+                      type: "artifact" as const,
+                      url: `${BASE_PATH}/api/document?id=${a.id}`,
+                    })),
+                  ];
+              return (
+                <InfoSection
+                  count={unifiedFiles.length}
+                  icon={<FileIcon size={15} />}
+                  title="Files"
+                >
+                  {unifiedFiles.length ? (
+                    unifiedFiles.map((file) => (
+                      <a
+                        className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
+                        href={file.url}
+                        key={file.key}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {file.type === "upload" ? (
+                          <PaperclipIcon size={15} />
+                        ) : (
+                          <CodeIcon size={15} />
+                        )}
+                        <span className="truncate">{file.name}</span>
+                        <span className="ml-auto shrink-0 text-[10px] uppercase text-muted-foreground">
+                          {file.kind}
+                        </span>
+                      </a>
+                    ))
+                  ) : (
+                    <EmptyState text="No files" />
+                  )}
+                </InfoSection>
+              );
+            })()}
           </div>
         </SidebarContent>
       </Sidebar>

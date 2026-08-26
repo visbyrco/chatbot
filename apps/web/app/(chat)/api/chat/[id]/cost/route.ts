@@ -85,7 +85,7 @@ export async function GET(
     byModel.set(model, current);
   }
 
-  const files = messages.flatMap((message) => {
+  const rawFiles = messages.flatMap((message) => {
     const parts = Array.isArray(message.parts) ? message.parts : [];
     return parts
       .filter(
@@ -110,20 +110,31 @@ export async function GET(
       });
   });
   const uniqueFiles = [
-    ...new Map(files.map((file) => [file.url || file.name, file])).values(),
+    ...new Map(rawFiles.map((file) => [file.url || file.name, file])).values(),
   ];
 
   const artifactIds = messages.flatMap((message) => {
     const parts = Array.isArray(message.parts) ? message.parts : [];
     return parts
-      .filter(
-        (part) =>
-          typeof part === "object" &&
-          part !== null &&
-          "type" in part &&
-          (part.type === "tool-createDocument" ||
-            part.type === "tool-updateDocument")
-      )
+      .filter((part) => {
+        if (
+          typeof part !== "object" ||
+          part === null ||
+          !("type" in part) ||
+          typeof (part as { type: unknown }).type !== "string"
+        ) {
+          return false;
+        }
+        const t = (part as { type: string }).type;
+        return (
+          t === "tool-createDocument" ||
+          t === "tool-updateDocument" ||
+          t === "tool-writeDocument" ||
+          t === "tool-editDocument" ||
+          t === "tool-writeFile" ||
+          t === "tool-editFile"
+        );
+      })
       .map((part) => {
         const { output } = part as { output?: { id?: string } };
         return output?.id;
@@ -140,6 +151,25 @@ export async function GET(
     Boolean(artifact)
   );
 
+  const files = [
+    ...uniqueFiles.map((f) => ({
+      contentType: f.contentType,
+      kind: "upload" as const,
+      name: f.name,
+      type: "upload" as const,
+      url: f.url,
+    })),
+    ...artifacts.map((a) => ({
+      contentType: null as string | null,
+      id: a.id,
+      kind: a.kind,
+      name: a.title,
+      title: a.title,
+      type: "artifact" as const,
+      url: `/api/document?id=${a.id}`,
+    })),
+  ];
+
   return Response.json({
     artifacts,
     attachments: uniqueFiles,
@@ -147,6 +177,7 @@ export async function GET(
       model,
       ...stats,
     })),
+    files,
     pricedMessages: pricedCosts.length,
     tokens: {
       cachedInput: costs.reduce(

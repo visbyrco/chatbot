@@ -21,19 +21,20 @@ import {
   getLanguageModel,
   isOpenAICompatibleProvider,
 } from "@/lib/ai/providers";
-import { editDocument } from "@/lib/ai/tools/edit-document";
+import { editFile } from "@/lib/ai/tools/edit-file";
 import { fetchUrl } from "@/lib/ai/tools/fetch-url";
 import { getWeather } from "@/lib/ai/tools/get-weather";
 import {
-  DOCUMENT_TOOL_IDS,
+  FILE_TOOL_IDS,
   SEARCH_PROVIDERS,
   type SearchProvider,
   TOOL_IDS,
   TOOL_IDS_SET,
 } from "@/lib/ai/tools/metadata";
+import { readFile } from "@/lib/ai/tools/read-file";
 import { runPythonTool } from "@/lib/ai/tools/run-python";
 import { searchWeb } from "@/lib/ai/tools/search-web";
-import { writeDocument } from "@/lib/ai/tools/write-document";
+import { writeFile } from "@/lib/ai/tools/write-file";
 import { resolveAttachmentParts } from "@/lib/attachments";
 import { isProductionEnvironment, isTestEnvironmentNow } from "@/lib/constants";
 import {
@@ -412,7 +413,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const hasDocumentTools = DOCUMENT_TOOL_IDS.some((toolId) =>
+    const hasFileTools = FILE_TOOL_IDS.some((toolId) =>
       effectiveToolNames.has(toolId)
     );
     const responseStartedAt = new Date();
@@ -533,7 +534,7 @@ export async function POST(request: Request) {
             : [],
           instructions: systemPrompt({
             requestHints,
-            supportsTools: supportsTools && hasDocumentTools,
+            supportsTools: supportsTools && hasFileTools,
             userAiContext,
           }),
           messages: modelMessages,
@@ -564,13 +565,18 @@ export async function POST(request: Request) {
           tools: {
             ...(effectiveToolNames.has("getWeather") ? { getWeather } : {}),
             ...(effectiveToolNames.has("fetchUrl") ? { fetchUrl } : {}),
-            ...(effectiveToolNames.has("writeDocument")
+            ...(effectiveToolNames.has("writeFile") ||
+            effectiveToolNames.has("writeDocument")
               ? {
-                  writeDocument: writeDocument({ dataStream, session }),
+                  writeFile: writeFile({ dataStream, session }),
                 }
               : {}),
-            ...(effectiveToolNames.has("editDocument")
-              ? { editDocument: editDocument({ dataStream, session }) }
+            ...(effectiveToolNames.has("editFile") ||
+            effectiveToolNames.has("editDocument")
+              ? { editFile: editFile({ dataStream, session }) }
+              : {}),
+            ...(effectiveToolNames.has("readFile")
+              ? { readFile: readFile({ session }) }
               : {}),
             ...(searchWebConfig === undefined
               ? {}
