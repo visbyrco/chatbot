@@ -119,9 +119,24 @@ function renderToolPart(part: ExportPart): string {
     case "tool-getWeather":
       return renderWeatherPart(part);
     case "tool-createDocument":
+    case "tool-writeDocument":
+    case "tool-writeFile":
       return renderDocumentToolPart(part, "Created");
     case "tool-updateDocument":
+    case "tool-editDocument":
+    case "tool-editFile":
       return renderDocumentToolPart(part, "Updated");
+    case "tool-readFile": {
+      const out = part.output as
+        | { name?: string; title?: string; truncated?: boolean }
+        | null
+        | undefined;
+      if (!out || "error" in out) {
+        return "*Read file failed.*";
+      }
+      const label = out.title ?? out.name ?? "file";
+      return `**Read file: ${label}**${out.truncated ? " (truncated)" : ""}`;
+    }
     case "tool-fetchUrl":
       return renderFetchUrlPart(part);
     default:

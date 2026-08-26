@@ -1,12 +1,13 @@
 import type { InferUITool, UIMessage } from "ai";
 import { z } from "zod";
 import type { ArtifactKind } from "@/components/chat/artifact";
-import type { editDocument } from "./ai/tools/edit-document";
+import type { editFile } from "./ai/tools/edit-file";
 import type { fetchUrl } from "./ai/tools/fetch-url";
 import type { getWeather } from "./ai/tools/get-weather";
+import type { readFile } from "./ai/tools/read-file";
 import type { runPythonTool } from "./ai/tools/run-python";
 import type { searchWeb } from "./ai/tools/search-web";
-import type { writeDocument } from "./ai/tools/write-document";
+import type { writeFile } from "./ai/tools/write-file";
 import type { Suggestion } from "./db/schema";
 
 export type VisibilityType = "private" | "public";
@@ -40,14 +41,22 @@ export const messageMetadataSchema = z.object({
 export type MessageMetadata = z.infer<typeof messageMetadataSchema>;
 
 type weatherTool = InferUITool<typeof getWeather>;
-type writeDocumentTool = InferUITool<ReturnType<typeof writeDocument>>;
-type editDocumentTool = InferUITool<ReturnType<typeof editDocument>>;
+type writeFileTool = InferUITool<ReturnType<typeof writeFile>>;
+type editFileTool = InferUITool<ReturnType<typeof editFile>>;
+type readFileTool = InferUITool<ReturnType<typeof readFile>>;
 type searchWebTool = InferUITool<ReturnType<typeof searchWeb>>;
 type fetchUrlTool = InferUITool<typeof fetchUrl>;
 type runPythonToolType = InferUITool<typeof runPythonTool>;
 
+// Legacy aliases for backward compat with stored messages
+type writeDocumentTool = writeFileTool;
+type editDocumentTool = editFileTool;
+
 export type ChatTools = {
   getWeather: weatherTool;
+  writeFile: writeFileTool;
+  editFile: editFileTool;
+  readFile: readFileTool;
   writeDocument: writeDocumentTool;
   editDocument: editDocumentTool;
   searchWeb: searchWebTool;
