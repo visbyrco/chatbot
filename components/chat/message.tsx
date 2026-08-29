@@ -1,9 +1,18 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
+import {
+  Code2Icon,
+  GlobeIcon,
+  Link2Icon,
+  LoaderCircleIcon,
+  SearchIcon,
+} from "lucide-react";
+import dynamic from "next/dynamic";
 import { memo, useCallback } from "react";
 import { useAutoCollapse } from "@/hooks/use-auto-collapse";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
+import type { CodeBlockProps } from "../ai-elements/code-block";
 import { MessageContent } from "../ai-elements/message";
 import { MessageResponse } from "../ai-elements/message-response";
 import { Shimmer } from "../ai-elements/shimmer";
@@ -17,6 +26,145 @@ import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
 import { WebFetchResults } from "./web-fetch";
 import { WebSearchResults } from "./web-search";
+
+const CodeBlock = dynamic<CodeBlockProps>(
+  () => import("../ai-elements/code-block").then((m) => m.CodeBlock),
+  { loading: () => null, ssr: false }
+);
+
+function SearchWebInputPreview({ input }: { input: unknown }) {
+  const query =
+    typeof input === "object" && input !== null && "query" in input
+      ? String((input as { query?: unknown }).query ?? "")
+      : "";
+  const maxResults =
+    typeof input === "object" && input !== null && "maxResults" in input
+      ? (input as { maxResults?: unknown }).maxResults
+      : undefined;
+  const count = typeof maxResults === "number" ? String(maxResults) : undefined;
+
+  if (!query) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-dashed bg-foreground/[0.03] px-3 py-2.5 text-sm text-muted-foreground">
+        <SearchIcon className="size-4 shrink-0 animate-pulse" />
+        <span>Preparing search…</span>
+        <LoaderCircleIcon className="ml-auto size-4 animate-spin opacity-60" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-foreground/[0.03]">
+      <div className="flex items-center gap-2.5 px-3 py-2.5">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-background">
+          <GlobeIcon className="size-3.5 text-muted-foreground" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-medium leading-none">
+            {query}
+          </p>
+          <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
+              Searching the web
+            </span>
+            {count ? (
+              <>
+                <span className="opacity-30">·</span>
+                <span>{count} results</span>
+              </>
+            ) : null}
+          </p>
+        </div>
+        <LoaderCircleIcon className="size-4 shrink-0 animate-spin text-muted-foreground" />
+      </div>
+    </div>
+  );
+}
+
+function FetchUrlInputPreview({ input }: { input: unknown }) {
+  const rawUrl =
+    typeof input === "object" && input !== null && "url" in input
+      ? String((input as { url?: unknown }).url ?? "")
+      : "";
+  let hostname = "";
+  let displayUrl = rawUrl;
+  try {
+    if (rawUrl) {
+      const parsed = new URL(rawUrl);
+      hostname = parsed.hostname.replace(/^www\./, "");
+      displayUrl = rawUrl;
+    }
+  } catch {
+    hostname = "";
+  }
+
+  if (!rawUrl) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-dashed bg-foreground/[0.03] px-3 py-2.5 text-sm text-muted-foreground">
+        <Link2Icon className="size-4 shrink-0 animate-pulse" />
+        <span>Preparing fetch…</span>
+        <LoaderCircleIcon className="ml-auto size-4 animate-spin opacity-60" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border bg-foreground/[0.03]">
+      <div className="flex items-center gap-2.5 px-3 py-2.5">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md border bg-background">
+          <Link2Icon className="size-3.5 text-muted-foreground" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-medium leading-none">
+            {hostname || displayUrl}
+          </p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {displayUrl}
+          </p>
+        </div>
+        <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="size-1.5 animate-pulse rounded-full bg-sky-500" />
+          Fetching
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PythonInputPreview({ input }: { input: unknown }) {
+  const code =
+    typeof input === "object" && input !== null && "code" in input
+      ? String((input as { code?: unknown }).code ?? "")
+      : "";
+
+  if (!code) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-dashed bg-foreground/[0.03] px-3 py-2.5 text-sm text-muted-foreground">
+        <Code2Icon className="size-4 shrink-0 animate-pulse" />
+        <span>Preparing Python…</span>
+        <LoaderCircleIcon className="ml-auto size-4 animate-spin opacity-60" />
+      </div>
+    );
+  }
+
+  const lineCount = code.split("\n").length;
+
+  return (
+    <div className="overflow-hidden rounded-lg border">
+      <div className="flex items-center justify-between gap-2 bg-foreground/[0.04] px-3 py-2">
+        <span className="flex items-center gap-1.5 text-xs font-medium">
+          <Code2Icon className="size-3.5 text-muted-foreground" />
+          Python
+        </span>
+        <span className="text-[11px] text-muted-foreground">
+          {lineCount} line{lineCount === 1 ? "" : "s"}
+        </span>
+      </div>
+      <CodeBlock code={code} language="python" />
+    </div>
+  );
+}
 
 function WaitingText() {
   const { waitingStatus } = useDataStream();
@@ -406,7 +554,11 @@ const PurePreviewMessage = ({
               className="w-full"
               defaultOpen={true}
             >
-              <ToolHeader state="output-denied" type="tool-searchWeb" />
+              <ToolHeader
+                state="output-denied"
+                title="Web search"
+                type="tool-searchWeb"
+              />
               <ToolContent>
                 <div className="px-4 py-3 text-muted-foreground text-sm">
                   Web search was denied.
@@ -425,9 +577,13 @@ const PurePreviewMessage = ({
               className="w-full"
               defaultOpen={true}
             >
-              <ToolHeader state={state} type="tool-searchWeb" />
+              <ToolHeader
+                state={state}
+                title="Web search"
+                type="tool-searchWeb"
+              />
               <ToolContent>
-                <ToolInput input={part.input} />
+                <SearchWebInputPreview input={part.input} />
               </ToolContent>
             </Tool>
           </div>
@@ -441,11 +597,16 @@ const PurePreviewMessage = ({
             className="w-full"
             defaultOpen={true}
           >
-            <ToolHeader state={state} type="tool-searchWeb" />
+            <ToolHeader
+              state={state}
+              title="Web search"
+              type="tool-searchWeb"
+            />
             <ToolContent>
               {(state === "input-available" ||
-                state === "approval-requested") && (
-                <ToolInput input={part.input} />
+                state === "approval-requested" ||
+                state === "input-streaming") && (
+                <SearchWebInputPreview input={part.input} />
               )}
               {state === "approval-requested" && approvalId && (
                 <ToolApprovalActions
@@ -494,7 +655,11 @@ const PurePreviewMessage = ({
               className="w-full"
               defaultOpen={true}
             >
-              <ToolHeader state="output-denied" type="tool-fetchUrl" />
+              <ToolHeader
+                state="output-denied"
+                title="Web fetch"
+                type="tool-fetchUrl"
+              />
               <ToolContent>
                 <div className="px-4 py-3 text-muted-foreground text-sm">
                   Fetching the URL was denied.
@@ -512,11 +677,12 @@ const PurePreviewMessage = ({
             className="w-full"
             defaultOpen={true}
           >
-            <ToolHeader state={state} type="tool-fetchUrl" />
+            <ToolHeader state={state} title="Web fetch" type="tool-fetchUrl" />
             <ToolContent>
               {(state === "input-available" ||
-                state === "approval-requested") && (
-                <ToolInput input={part.input} />
+                state === "approval-requested" ||
+                state === "input-streaming") && (
+                <FetchUrlInputPreview input={part.input} />
               )}
               {state === "approval-requested" && approvalId && (
                 <ToolApprovalActions
@@ -543,9 +709,9 @@ const PurePreviewMessage = ({
               className="w-full"
               defaultOpen={Boolean(output.error)}
             >
-              <ToolHeader state={state} type="tool-runPython" />
+              <ToolHeader state={state} title="Python" type="tool-runPython" />
               <ToolContent>
-                <ToolInput input={part.input} />
+                <PythonInputPreview input={part.input} />
                 {output.stdout ? (
                   <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-foreground/5 px-3 py-2 font-mono text-xs leading-relaxed">
                     {sanitizeText(output.stdout)}
@@ -579,11 +745,12 @@ const PurePreviewMessage = ({
             className="w-full"
             defaultOpen={true}
           >
-            <ToolHeader state={state} type="tool-runPython" />
+            <ToolHeader state={state} title="Python" type="tool-runPython" />
             <ToolContent>
               {(state === "input-available" ||
-                state === "approval-requested") && (
-                <ToolInput input={part.input} />
+                state === "approval-requested" ||
+                state === "input-streaming") && (
+                <PythonInputPreview input={part.input} />
               )}
             </ToolContent>
           </Tool>
