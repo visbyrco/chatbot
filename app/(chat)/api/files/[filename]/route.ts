@@ -15,16 +15,30 @@ function getUploadDir(): string {
 // Only safe types are served with their native Content-Type.
 // Dangerous types (html/js/xml/svg) are forced to a safe type and served as attachment.
 const CONTENT_TYPES: Record<string, string> = {
+  aac: "audio/aac",
+  avi: "video/x-msvideo",
   csv: "text/csv",
+  flac: "audio/flac",
   gif: "image/gif",
   jpeg: "image/jpeg",
   jpg: "image/jpeg",
   json: "application/json",
+  m4a: "audio/mp4",
   md: "text/markdown",
+  mov: "video/quicktime",
+  mp3: "audio/mpeg",
+  mp4: "video/mp4",
+  mpeg: "video/mpeg",
+  mpg: "video/mpeg",
+  oga: "audio/ogg",
+  ogg: "audio/ogg",
+  ogv: "video/ogg",
   pdf: "application/pdf",
   png: "image/png",
   svg: "image/svg+xml",
   txt: "text/plain",
+  wav: "audio/wav",
+  webm: "video/webm",
   webp: "image/webp",
   yaml: "application/yaml",
   yml: "application/yaml",
@@ -78,7 +92,6 @@ export async function GET(
   // Ownership check via sidecar metadata
   const metaPath = join(uploadDir, ".meta", `${safeName}.json`);
   let isOwner = false;
-  let metaExists = false;
   let storedContentType: string | undefined;
   try {
     const metaRaw = await readFile(metaPath, "utf8");
@@ -86,7 +99,6 @@ export async function GET(
       userId?: string;
       contentType?: string;
     };
-    metaExists = true;
     storedContentType = meta.contentType;
     if (meta.userId && meta.userId === session.user.id) {
       isOwner = true;

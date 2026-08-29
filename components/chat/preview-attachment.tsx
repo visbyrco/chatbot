@@ -51,9 +51,25 @@ export const PreviewAttachment = ({
           src={src}
           width={96}
         />
+      ) : contentType?.startsWith("video") ? (
+        <video className="size-full object-cover" muted playsInline src={src} />
+      ) : contentType?.startsWith("audio") ? (
+        <div className="flex size-full flex-col items-center justify-center gap-1 bg-foreground/5 px-2 text-center">
+          <span className="text-[10px] font-medium text-muted-foreground">
+            Audio
+          </span>
+          <span className="max-w-full truncate text-[10px] text-muted-foreground">
+            {name}
+          </span>
+        </div>
       ) : (
-        <div className="flex size-full items-center justify-center text-muted-foreground text-xs">
-          File
+        <div className="flex size-full flex-col items-center justify-center gap-1 bg-foreground/5 px-2 text-center">
+          <span className="text-[10px] font-medium text-muted-foreground">
+            File
+          </span>
+          <span className="max-w-full truncate text-[10px] text-muted-foreground">
+            {name}
+          </span>
         </div>
       )}
 

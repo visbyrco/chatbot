@@ -31,6 +31,22 @@ const ALLOWED_FILE_EXTS = new Set([
   ".webp",
   ".yaml",
   ".yml",
+  // video
+  ".mp4",
+  ".webm",
+  ".mov",
+  ".avi",
+  ".mpeg",
+  ".mpg",
+  ".ogg",
+  ".ogv",
+  // audio
+  ".mp3",
+  ".wav",
+  ".flac",
+  ".aac",
+  ".m4a",
+  ".oga",
 ]);
 
 const FileSchema = z.object({
@@ -43,7 +59,7 @@ const FileSchema = z.object({
       message: "Blocked file type",
     })
     .refine((file) => isAllowedMediaType(file.type), {
-      message: "File type should be an image, PDF, or text file",
+      message: "File type should be an image, PDF, text, video, or audio file",
     }),
 });
 

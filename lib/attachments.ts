@@ -30,6 +30,26 @@ export const TEXT_MEDIA_TYPES = [
   "application/x-yaml",
 ] as const;
 
+export const VIDEO_MEDIA_TYPES = [
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-msvideo",
+  "video/mpeg",
+  "video/ogg",
+] as const;
+
+export const AUDIO_MEDIA_TYPES = [
+  "audio/mpeg",
+  "audio/wav",
+  "audio/webm",
+  "audio/ogg",
+  "audio/mp4",
+  "audio/flac",
+  "audio/aac",
+  "audio/x-m4a",
+] as const;
+
 export const BLOCKED_MEDIA_TYPES: readonly string[] = [
   "text/html",
   "text/javascript",
@@ -46,9 +66,11 @@ export const ALLOWED_MEDIA_TYPES: readonly string[] = [
   ...IMAGE_MEDIA_TYPES,
   PDF_MEDIA_TYPE,
   ...TEXT_MEDIA_TYPES,
+  ...VIDEO_MEDIA_TYPES,
+  ...AUDIO_MEDIA_TYPES,
 ];
 
-export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB — accommodates video/audio
 
 export function isBlockedMediaType(mediaType: string | undefined): boolean {
   return (
@@ -75,12 +97,28 @@ export function isTextMediaType(mediaType: string | undefined): boolean {
   );
 }
 
+export function isVideoMediaType(mediaType: string | undefined): boolean {
+  return (
+    mediaType !== undefined &&
+    VIDEO_MEDIA_TYPES.includes(mediaType as (typeof VIDEO_MEDIA_TYPES)[number])
+  );
+}
+
+export function isAudioMediaType(mediaType: string | undefined): boolean {
+  return (
+    mediaType !== undefined &&
+    AUDIO_MEDIA_TYPES.includes(mediaType as (typeof AUDIO_MEDIA_TYPES)[number])
+  );
+}
+
 export function isAllowedMediaType(mediaType: string | undefined): boolean {
   return (
     !isBlockedMediaType(mediaType) &&
     (isImageMediaType(mediaType) ||
       isPdfMediaType(mediaType) ||
-      isTextMediaType(mediaType))
+      isTextMediaType(mediaType) ||
+      isVideoMediaType(mediaType) ||
+      isAudioMediaType(mediaType))
   );
 }
 
@@ -101,6 +139,12 @@ function getBasePath(): string {
  * (`/api/files/<filename>`), regardless of host or port and regardless of the
  * optional `basePath` prefix. We resolve only self-hosted uploads (never
  * arbitrary external URLs) to data URLs.
+ *
+ * Both relative (`/api/files/x`) and absolute (`https://host/api/files/x`)
+ * URLs are considered local if their pathname matches the file route — the
+ * host is ignored so legacy absolute URLs and cross-origin fetches that still
+ * point at our file route get inlined instead of being sent as external URLs
+ * that the provider cannot fetch (localhost, auth-protected).
  */
 export function isLocalFileUrl(url: string | undefined): boolean {
   if (url === undefined || url === "") {
@@ -109,11 +153,12 @@ export function isLocalFileUrl(url: string | undefined): boolean {
   if (url.startsWith("//")) {
     return false;
   }
+  // data: URLs are already inlined — not a local file path to resolve
+  if (url.startsWith("data:")) {
+    return false;
+  }
   try {
     const parsed = new URL(url, "http://local.invalid");
-    if (parsed.origin !== "http://local.invalid") {
-      return false;
-    }
     const { pathname } = parsed;
     const basePath = getBasePath();
     if (pathname.startsWith("/api/files/")) {
@@ -121,6 +166,19 @@ export function isLocalFileUrl(url: string | undefined): boolean {
     }
     if (basePath && pathname.startsWith(`${basePath}/api/files/`)) {
       return true;
+    }
+    // Also handle absolute URLs where origin is not local.invalid but
+    // pathname still matches our file route.
+    if (pathname.includes("/api/files/")) {
+      // Ensure it is exactly our file route, not a substring in an external path
+      const idx = pathname.indexOf("/api/files/");
+      if (idx !== -1) {
+        // Check that the segment after /api/files/ looks like a filename
+        const remainder = pathname.slice(idx + "/api/files/".length);
+        if (remainder.length > 0 && !remainder.includes("..")) {
+          return true;
+        }
+      }
     }
     return false;
   } catch {
@@ -314,14 +372,23 @@ export async function resolveAttachmentParts(
             const decoded = dataUrlToText(dataUrl);
             if (decoded !== null) {
               return {
-                text: `<attachment name="${filePart.name ?? "file"}">\n${decoded}\n</attachment>`,
+                text: `<attachment name="${filePart.name ?? filePart.filename ?? "file"}">\n${decoded}\n</attachment>`,
                 type: "text" as const,
               };
             }
           }
 
-          // Images / PDFs → keep as a file part with an inlined data URL.
-          return { ...filePart, url: dataUrl };
+          // Images / PDFs / video / audio → keep as a file part with an
+          // inlined data URL. The model receives the bytes inline; the provider
+          // cannot fetch localhost http(s) URLs and the AI SDK skips external
+          // download for openai/anthropic, so inlining is required.
+          // Ensure the FileUIPart uses `filename` (AI SDK type) in addition to
+          // legacy `name` so convertToModelMessages preserves it.
+          return {
+            ...filePart,
+            filename: filePart.filename ?? filePart.name,
+            url: dataUrl,
+          };
         })
       );
 
