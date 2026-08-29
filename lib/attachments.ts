@@ -42,12 +42,16 @@ export const VIDEO_MEDIA_TYPES = [
 export const AUDIO_MEDIA_TYPES = [
   "audio/mpeg",
   "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
   "audio/webm",
   "audio/ogg",
   "audio/mp4",
   "audio/flac",
+  "audio/x-flac",
   "audio/aac",
   "audio/x-m4a",
+  "audio/x-aac",
 ] as const;
 
 export const BLOCKED_MEDIA_TYPES: readonly string[] = [
@@ -70,7 +74,8 @@ export const ALLOWED_MEDIA_TYPES: readonly string[] = [
   ...AUDIO_MEDIA_TYPES,
 ];
 
-export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB — accommodates video/audio
+export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB default for images/PDF/text
+export const MAX_VIDEO_AUDIO_FILE_SIZE = 50 * 1024 * 1024; // 50 MB for video/audio only
 
 export function isBlockedMediaType(mediaType: string | undefined): boolean {
   return (
@@ -140,11 +145,11 @@ function getBasePath(): string {
  * optional `basePath` prefix. We resolve only self-hosted uploads (never
  * arbitrary external URLs) to data URLs.
  *
- * Both relative (`/api/files/x`) and absolute (`https://host/api/files/x`)
- * URLs are considered local if their pathname matches the file route — the
- * host is ignored so legacy absolute URLs and cross-origin fetches that still
- * point at our file route get inlined instead of being sent as external URLs
- * that the provider cannot fetch (localhost, auth-protected).
+ * Relative URLs (`/api/files/x`) are always considered local. Absolute URLs
+ * are only considered local if their hostname is localhost/127.0.0.1 or matches
+ * NEXT_PUBLIC_APP_URL — this handles legacy absolute URLs like
+ * `https://localhost:3000/api/files/...` without opening `https://attacker.com/api/files/...`
+ * to misclassification.
  */
 export function isLocalFileUrl(url: string | undefined): boolean {
   if (url === undefined || url === "") {
@@ -153,34 +158,34 @@ export function isLocalFileUrl(url: string | undefined): boolean {
   if (url.startsWith("//")) {
     return false;
   }
-  // data: URLs are already inlined — not a local file path to resolve
   if (url.startsWith("data:")) {
     return false;
   }
   try {
     const parsed = new URL(url, "http://local.invalid");
-    const { pathname } = parsed;
+    const { origin, pathname } = parsed;
+    const isRelative = origin === "http://local.invalid";
     const basePath = getBasePath();
-    if (pathname.startsWith("/api/files/")) {
+    const isFilePath =
+      pathname.startsWith("/api/files/") ||
+      (basePath !== "" && pathname.startsWith(`${basePath}/api/files/`));
+    if (!isFilePath) {
+      return false;
+    }
+    if (isRelative) {
       return true;
     }
-    if (basePath && pathname.startsWith(`${basePath}/api/files/`)) {
-      return true;
-    }
-    // Also handle absolute URLs where origin is not local.invalid but
-    // pathname still matches our file route.
-    if (pathname.includes("/api/files/")) {
-      // Ensure it is exactly our file route, not a substring in an external path
-      const idx = pathname.indexOf("/api/files/");
-      if (idx !== -1) {
-        // Check that the segment after /api/files/ looks like a filename
-        const remainder = pathname.slice(idx + "/api/files/".length);
-        if (remainder.length > 0 && !remainder.includes("..")) {
-          return true;
-        }
+    // Absolute URL — only allow localhost / app host to avoid attacker.com/api/files/ misclassification
+    let allowedHosts: string[] = ["localhost", "127.0.0.1"];
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+      if (appUrl) {
+        allowedHosts = [...allowedHosts, new URL(appUrl).hostname];
       }
+    } catch {
+      // ignore invalid NEXT_PUBLIC_APP_URL
     }
-    return false;
+    return allowedHosts.includes(parsed.hostname);
   } catch {
     return false;
   }
@@ -250,6 +255,15 @@ export async function localFileUrlToDataUrl(
       return null;
     }
     const buffer = await readFile(filePath);
+    // Guard against OOM: 50 MB video → ~66 MB base64 string, times concurrent parts
+    // Keep inline limit at ~20 MB raw; larger files get text placeholder.
+    if (buffer.length > 20 * 1024 * 1024) {
+      console.warn("Attachment too large to inline, returning placeholder:", {
+        filename,
+        size: buffer.length,
+      });
+      return null;
+    }
     return `data:${mediaType};base64,${buffer.toString("base64")}`;
   } catch (error) {
     console.error("Failed to read attachment file:", { error, filename });

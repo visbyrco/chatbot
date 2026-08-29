@@ -7,8 +7,11 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import {
   isAllowedMediaType,
+  isAudioMediaType,
   isBlockedMediaType,
+  isVideoMediaType,
   MAX_FILE_SIZE,
+  MAX_VIDEO_AUDIO_FILE_SIZE,
 } from "@/lib/attachments";
 import { ChatbotError } from "@/lib/errors";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
@@ -52,9 +55,18 @@ const ALLOWED_FILE_EXTS = new Set([
 const FileSchema = z.object({
   file: z
     .instanceof(Blob)
-    .refine((file) => file.size <= MAX_FILE_SIZE, {
-      message: `File size should be less than ${Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB`,
-    })
+    .refine(
+      (file) => {
+        const limit =
+          isVideoMediaType(file.type) || isAudioMediaType(file.type)
+            ? MAX_VIDEO_AUDIO_FILE_SIZE
+            : MAX_FILE_SIZE;
+        return file.size <= limit;
+      },
+      {
+        message: "File size exceeds limit",
+      }
+    )
     .refine((file) => !isBlockedMediaType(file.type), {
       message: "Blocked file type",
     })

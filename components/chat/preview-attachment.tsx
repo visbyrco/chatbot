@@ -27,8 +27,12 @@ export const PreviewAttachment = ({
   // remotePatterns validation. Relative and `data:` URLs pass through.
   const src = (() => {
     try {
-      const parsed = new URL(url);
+      const parsed = new URL(url, "http://local.invalid");
+      const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
       if (parsed.pathname.startsWith("/api/files/")) {
+        return parsed.pathname;
+      }
+      if (basePath && parsed.pathname.startsWith(`${basePath}/api/files/`)) {
         return parsed.pathname;
       }
     } catch {
@@ -52,16 +56,23 @@ export const PreviewAttachment = ({
           width={96}
         />
       ) : contentType?.startsWith("video") ? (
-        <video className="size-full object-cover" muted playsInline src={src} />
+        <video
+          className="size-full object-cover"
+          controls
+          muted
+          playsInline
+          preload="metadata"
+          src={src}
+        />
       ) : contentType?.startsWith("audio") ? (
-        <div className="flex size-full flex-col items-center justify-center gap-1 bg-foreground/5 px-2 text-center">
-          <span className="text-[10px] font-medium text-muted-foreground">
-            Audio
-          </span>
-          <span className="max-w-full truncate text-[10px] text-muted-foreground">
-            {name}
-          </span>
-        </div>
+        // biome-ignore lint/a11y/useMediaCaption: preview has no captions
+        <audio
+          aria-label={name}
+          className="w-full self-center px-2"
+          controls
+          preload="metadata"
+          src={src}
+        />
       ) : (
         <div className="flex size-full flex-col items-center justify-center gap-1 bg-foreground/5 px-2 text-center">
           <span className="text-[10px] font-medium text-muted-foreground">
