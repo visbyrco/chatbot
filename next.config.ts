@@ -101,7 +101,7 @@ const nextConfig: NextConfig = {
     },
     incomingRequests: false,
   },
-  output: "standalone",
+  ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
   poweredByHeader: false,
   reactCompiler: true,
 };
