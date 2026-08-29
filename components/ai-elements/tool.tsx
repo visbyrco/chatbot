@@ -136,16 +136,40 @@ export type ToolInputProps = ComponentProps<"div"> & {
   input: ToolPart["input"];
 };
 
-export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
-  <div className={cn("space-y-2 overflow-hidden", className)} {...props}>
-    <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-      Parameters
-    </h4>
-    <div className="rounded-lg bg-foreground/5">
-      <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+export const ToolInput = ({ className, input, ...props }: ToolInputProps) => {
+  const isPythonInput =
+    typeof input === "object" &&
+    input !== null &&
+    "code" in input &&
+    typeof (input as { code?: unknown }).code === "string";
+
+  if (isPythonInput) {
+    const code = String((input as { code: string }).code);
+    const lineCount = code.split("\n").length;
+    return (
+      <div className={cn("space-y-2 overflow-hidden", className)} {...props}>
+        <h4 className="flex items-center justify-between font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          <span>Python code</span>
+          <span className="font-mono normal-case tracking-normal">
+            {lineCount} line{lineCount === 1 ? "" : "s"}
+          </span>
+        </h4>
+        <CodeBlock code={code} language="python" />
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("space-y-2 overflow-hidden", className)} {...props}>
+      <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+        Parameters
+      </h4>
+      <div className="rounded-lg bg-foreground/5">
+        <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export type ToolOutputProps = ComponentProps<"div"> & {
   output: ToolPart["output"];
@@ -180,10 +204,10 @@ export const ToolOutput = ({
       <div
         className={cn(
           "overflow-x-auto rounded-lg text-xs [&_table]:w-full",
-          errorText && "bg-destructive/10 text-destructive"
+          errorText ? "bg-destructive/10 text-destructive" : undefined
         )}
       >
-        {errorText && <div>{errorText}</div>}
+        {errorText ? <div>{errorText}</div> : null}
         {Output}
       </div>
     </div>
