@@ -7,8 +7,11 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import {
   isAllowedMediaType,
+  isAudioMediaType,
   isBlockedMediaType,
+  isVideoMediaType,
   MAX_FILE_SIZE,
+  MAX_VIDEO_AUDIO_FILE_SIZE,
 } from "@/lib/attachments";
 import { ChatbotError } from "@/lib/errors";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
@@ -31,19 +34,44 @@ const ALLOWED_FILE_EXTS = new Set([
   ".webp",
   ".yaml",
   ".yml",
+  // video
+  ".mp4",
+  ".webm",
+  ".mov",
+  ".avi",
+  ".mpeg",
+  ".mpg",
+  ".ogg",
+  ".ogv",
+  // audio
+  ".mp3",
+  ".wav",
+  ".flac",
+  ".aac",
+  ".m4a",
+  ".oga",
 ]);
 
 const FileSchema = z.object({
   file: z
     .instanceof(Blob)
-    .refine((file) => file.size <= MAX_FILE_SIZE, {
-      message: `File size should be less than ${Math.round(MAX_FILE_SIZE / 1024 / 1024)}MB`,
-    })
+    .refine(
+      (file) => {
+        const limit =
+          isVideoMediaType(file.type) || isAudioMediaType(file.type)
+            ? MAX_VIDEO_AUDIO_FILE_SIZE
+            : MAX_FILE_SIZE;
+        return file.size <= limit;
+      },
+      {
+        message: "File size exceeds limit",
+      }
+    )
     .refine((file) => !isBlockedMediaType(file.type), {
       message: "Blocked file type",
     })
     .refine((file) => isAllowedMediaType(file.type), {
-      message: "File type should be an image, PDF, or text file",
+      message: "File type should be an image, PDF, text, video, or audio file",
     }),
 });
 

@@ -30,6 +30,30 @@ export const TEXT_MEDIA_TYPES = [
   "application/x-yaml",
 ] as const;
 
+export const VIDEO_MEDIA_TYPES = [
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-msvideo",
+  "video/mpeg",
+  "video/ogg",
+] as const;
+
+export const AUDIO_MEDIA_TYPES = [
+  "audio/mpeg",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
+  "audio/webm",
+  "audio/ogg",
+  "audio/mp4",
+  "audio/flac",
+  "audio/x-flac",
+  "audio/aac",
+  "audio/x-m4a",
+  "audio/x-aac",
+] as const;
+
 export const BLOCKED_MEDIA_TYPES: readonly string[] = [
   "text/html",
   "text/javascript",
@@ -46,9 +70,12 @@ export const ALLOWED_MEDIA_TYPES: readonly string[] = [
   ...IMAGE_MEDIA_TYPES,
   PDF_MEDIA_TYPE,
   ...TEXT_MEDIA_TYPES,
+  ...VIDEO_MEDIA_TYPES,
+  ...AUDIO_MEDIA_TYPES,
 ];
 
-export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB default for images/PDF/text
+export const MAX_VIDEO_AUDIO_FILE_SIZE = 50 * 1024 * 1024; // 50 MB for video/audio only
 
 export function isBlockedMediaType(mediaType: string | undefined): boolean {
   return (
@@ -75,12 +102,28 @@ export function isTextMediaType(mediaType: string | undefined): boolean {
   );
 }
 
+export function isVideoMediaType(mediaType: string | undefined): boolean {
+  return (
+    mediaType !== undefined &&
+    VIDEO_MEDIA_TYPES.includes(mediaType as (typeof VIDEO_MEDIA_TYPES)[number])
+  );
+}
+
+export function isAudioMediaType(mediaType: string | undefined): boolean {
+  return (
+    mediaType !== undefined &&
+    AUDIO_MEDIA_TYPES.includes(mediaType as (typeof AUDIO_MEDIA_TYPES)[number])
+  );
+}
+
 export function isAllowedMediaType(mediaType: string | undefined): boolean {
   return (
     !isBlockedMediaType(mediaType) &&
     (isImageMediaType(mediaType) ||
       isPdfMediaType(mediaType) ||
-      isTextMediaType(mediaType))
+      isTextMediaType(mediaType) ||
+      isVideoMediaType(mediaType) ||
+      isAudioMediaType(mediaType))
   );
 }
 
@@ -101,6 +144,12 @@ function getBasePath(): string {
  * (`/api/files/<filename>`), regardless of host or port and regardless of the
  * optional `basePath` prefix. We resolve only self-hosted uploads (never
  * arbitrary external URLs) to data URLs.
+ *
+ * Relative URLs (`/api/files/x`) are always considered local. Absolute URLs
+ * are only considered local if their hostname is localhost/127.0.0.1 or matches
+ * NEXT_PUBLIC_APP_URL — this handles legacy absolute URLs like
+ * `https://localhost:3000/api/files/...` without opening `https://attacker.com/api/files/...`
+ * to misclassification.
  */
 export function isLocalFileUrl(url: string | undefined): boolean {
   if (url === undefined || url === "") {
@@ -109,20 +158,34 @@ export function isLocalFileUrl(url: string | undefined): boolean {
   if (url.startsWith("//")) {
     return false;
   }
+  if (url.startsWith("data:")) {
+    return false;
+  }
   try {
     const parsed = new URL(url, "http://local.invalid");
-    if (parsed.origin !== "http://local.invalid") {
+    const { origin, pathname } = parsed;
+    const isRelative = origin === "http://local.invalid";
+    const basePath = getBasePath();
+    const isFilePath =
+      pathname.startsWith("/api/files/") ||
+      (basePath !== "" && pathname.startsWith(`${basePath}/api/files/`));
+    if (!isFilePath) {
       return false;
     }
-    const { pathname } = parsed;
-    const basePath = getBasePath();
-    if (pathname.startsWith("/api/files/")) {
+    if (isRelative) {
       return true;
     }
-    if (basePath && pathname.startsWith(`${basePath}/api/files/`)) {
-      return true;
+    // Absolute URL — only allow localhost / app host to avoid attacker.com/api/files/ misclassification
+    let allowedHosts: string[] = ["localhost", "127.0.0.1"];
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+      if (appUrl) {
+        allowedHosts = [...allowedHosts, new URL(appUrl).hostname];
+      }
+    } catch {
+      // ignore invalid NEXT_PUBLIC_APP_URL
     }
-    return false;
+    return allowedHosts.includes(parsed.hostname);
   } catch {
     return false;
   }
@@ -192,6 +255,15 @@ export async function localFileUrlToDataUrl(
       return null;
     }
     const buffer = await readFile(filePath);
+    // Guard against OOM: 50 MB video → ~66 MB base64 string, times concurrent parts
+    // Keep inline limit at ~20 MB raw; larger files get text placeholder.
+    if (buffer.length > 20 * 1024 * 1024) {
+      console.warn("Attachment too large to inline, returning placeholder:", {
+        filename,
+        size: buffer.length,
+      });
+      return null;
+    }
     return `data:${mediaType};base64,${buffer.toString("base64")}`;
   } catch (error) {
     console.error("Failed to read attachment file:", { error, filename });
@@ -314,14 +386,23 @@ export async function resolveAttachmentParts(
             const decoded = dataUrlToText(dataUrl);
             if (decoded !== null) {
               return {
-                text: `<attachment name="${filePart.name ?? "file"}">\n${decoded}\n</attachment>`,
+                text: `<attachment name="${filePart.name ?? filePart.filename ?? "file"}">\n${decoded}\n</attachment>`,
                 type: "text" as const,
               };
             }
           }
 
-          // Images / PDFs → keep as a file part with an inlined data URL.
-          return { ...filePart, url: dataUrl };
+          // Images / PDFs / video / audio → keep as a file part with an
+          // inlined data URL. The model receives the bytes inline; the provider
+          // cannot fetch localhost http(s) URLs and the AI SDK skips external
+          // download for openai/anthropic, so inlining is required.
+          // Ensure the FileUIPart uses `filename` (AI SDK type) in addition to
+          // legacy `name` so convertToModelMessages preserves it.
+          return {
+            ...filePart,
+            filename: filePart.filename ?? filePart.name,
+            url: dataUrl,
+          };
         })
       );
 
