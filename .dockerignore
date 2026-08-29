@@ -6,3 +6,7 @@ uploads
 tests
 .env*
 .env.local
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
