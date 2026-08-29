@@ -209,7 +209,10 @@ export const ReasoningTrigger = memo(
   }
 );
 
-export type ReasoningContentProps = HTMLAttributes<HTMLDivElement> & {
+export type ReasoningContentProps = Omit<
+  HTMLAttributes<HTMLDivElement>,
+  "dir"
+> & {
   children: string;
 };
 
@@ -217,6 +220,7 @@ export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => {
     const { isStreaming, isOpen } = useReasoning();
     const scrollRef = useRef<HTMLDivElement>(null);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: children triggers scroll on new tokens
     useEffect(() => {
       if (!isStreaming || !scrollRef.current) {
         return;
@@ -245,7 +249,9 @@ export const ReasoningContent = memo(
           ref={scrollRef}
           style={{ msOverflowStyle: "none", scrollbarWidth: "none" }}
         >
-          <ReasoningMarkdown {...props}>{children}</ReasoningMarkdown>
+          <ReasoningMarkdown {...(props as unknown as ReasoningMarkdownProps)}>
+            {children}
+          </ReasoningMarkdown>
         </div>
       </div>
     );
