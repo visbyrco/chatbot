@@ -102,8 +102,12 @@ const nextConfig: NextConfig = {
     incomingRequests: false,
   },
   ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
+  outputFileTracingIncludes: {
+    "**/*": ["./node_modules/pyodide/**/*"],
+  },
   poweredByHeader: false,
   reactCompiler: true,
+  serverExternalPackages: ["pyodide"],
 };
 
 export default nextConfig;

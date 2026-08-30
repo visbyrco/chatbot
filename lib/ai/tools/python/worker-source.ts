@@ -50,7 +50,11 @@ async function init() {
   pyodide.setStdout({ batched: (text) => pushOutput("stdout", text) });
   pyodide.setStderr({ batched: (text) => pushOutput("stderr", text) });
 
-  await pyodide.loadPackage(ALLOWED_PACKAGES);
+  try {
+    await pyodide.loadPackage(ALLOWED_PACKAGES);
+  } catch (e) {
+    pushOutput("stderr", String(e && e.message ? e.message : e));
+  }
 
   if (typeof pyodide.setJsNamespace === "function") {
     pyodide.setJsNamespace({});
