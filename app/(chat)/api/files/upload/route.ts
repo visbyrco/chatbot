@@ -21,10 +21,7 @@ import {
 import { ChatbotError } from "@/lib/errors";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
 import { getClientIp } from "@/lib/server/request-utils";
-
-function getUploadDir(): string {
-  return process.env.UPLOAD_DIR ?? "./uploads";
-}
+import { getFallbackUploadDir, getUploadDir } from "@/lib/server/upload-dir";
 
 const ALLOWED_FILE_EXTS = new Set([
   ".csv",
@@ -160,53 +157,86 @@ export async function POST(request: Request) {
     const safeName = `${randomUUID()}${ext}`;
     const fileBuffer = Buffer.from(await file.arrayBuffer());
 
-    try {
-      const uploadDir = resolve(process.cwd(), getUploadDir());
-      await mkdir(uploadDir, { recursive: true });
-      const filePath = resolve(uploadDir, safeName);
-      const rel = relative(uploadDir, filePath);
-      if (isAbsolute(rel) || rel.startsWith("..")) {
-        return NextResponse.json(
-          { error: "Invalid filename" },
-          { status: 400 }
-        );
-      }
-      await writeFile(filePath, fileBuffer);
-
-      // Persist ownership metadata for authenticated file serving.
-      try {
-        const metaDir = join(uploadDir, ".meta");
-        await mkdir(metaDir, { recursive: true });
-        const metaPath = join(metaDir, `${safeName}.json`);
-        await writeFile(
-          metaPath,
-          JSON.stringify({
-            contentType: inferredType,
-            createdAt: new Date().toISOString(),
-            originalName: filename.slice(0, 100),
-            safeName,
-            size: fileBuffer.length,
-            userId: session.user.id,
-          })
-        );
-      } catch {
-        // Ownership metadata is best-effort; file is already stored.
-        // GET will deny access if metadata is missing, so log but don't fail.
-        console.error("Failed to write file metadata", { safeName });
-      }
-
-      const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-      return NextResponse.json({
-        contentType: inferredType,
-        name: filename.slice(0, 100),
-        pathname: safeName,
-        size: fileBuffer.length,
-        url: `${basePath}/api/files/${safeName}`,
-      });
-    } catch {
-      return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+    // Try the configured upload dir first, fall back to /tmp/uploads
+    // when the primary is not writable (Docker volume owned by root -> EACCES,
+    // Vercel read-only FS -> EROFS).
+    let lastError: unknown = null;
+    const candidates = [resolve(process.cwd(), getUploadDir())];
+    const fallback = resolve(getFallbackUploadDir());
+    if (candidates[0] !== fallback) {
+      candidates.push(fallback);
     }
-  } catch {
+
+    for (const uploadDir of candidates) {
+      try {
+        // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
+        await mkdir(uploadDir, { recursive: true });
+        const filePath = resolve(uploadDir, safeName);
+        const rel = relative(uploadDir, filePath);
+        if (isAbsolute(rel) || rel.startsWith("..")) {
+          return NextResponse.json(
+            { error: "Invalid filename" },
+            { status: 400 }
+          );
+        }
+        await writeFile(filePath, fileBuffer);
+
+        // Persist ownership metadata for authenticated file serving.
+        try {
+          const metaDir = join(uploadDir, ".meta");
+          await mkdir(metaDir, { recursive: true });
+          const metaPath = join(metaDir, `${safeName}.json`);
+          await writeFile(
+            metaPath,
+            JSON.stringify({
+              contentType: inferredType,
+              createdAt: new Date().toISOString(),
+              originalName: filename.slice(0, 100),
+              safeName,
+              size: fileBuffer.length,
+              userId: session.user.id,
+            })
+          );
+        } catch {
+          // Ownership metadata is best-effort; file is already stored.
+          // GET will deny access if metadata is missing, so log but don't fail.
+          console.error("Failed to write file metadata", { safeName });
+        }
+
+        if (uploadDir !== candidates[0]) {
+          console.warn(
+            `Upload dir fallback used: primary ${candidates[0]} not writable, stored in ${uploadDir}`
+          );
+        }
+
+        const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+        return NextResponse.json({
+          contentType: inferredType,
+          name: filename.slice(0, 100),
+          pathname: safeName,
+          size: fileBuffer.length,
+          url: `${basePath}/api/files/${safeName}`,
+        });
+      } catch (error) {
+        lastError = error;
+        const code = (error as NodeJS.ErrnoException)?.code;
+        const isPermissionError =
+          code === "EACCES" || code === "EROFS" || code === "EPERM";
+        // Only try fallback on permission/read-only errors
+        if (!isPermissionError || uploadDir === candidates.at(-1)) {
+          console.error("Upload failed", error);
+          return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+        }
+        console.warn(
+          `Upload dir ${uploadDir} not writable (${code}), trying fallback`
+        );
+      }
+    }
+
+    console.error("Upload failed: all candidates exhausted", lastError);
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+  } catch (error) {
+    console.error("Failed to process upload request", error);
     return NextResponse.json(
       { error: "Failed to process request" },
       { status: 500 }

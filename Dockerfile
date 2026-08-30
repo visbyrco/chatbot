@@ -55,6 +55,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/drizzle-orm ./node_m
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/postgres ./node_modules/postgres
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/dotenv ./node_modules/dotenv
 RUN chown -R nextjs:nodejs /app
+RUN mkdir -p /app/uploads /tmp/uploads && chown -R nextjs:nodejs /app/uploads /tmp/uploads
 
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod 755 docker-entrypoint.sh

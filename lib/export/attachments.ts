@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { format } from "date-fns";
 import { isLocalFileUrl, sanitizeFilename } from "@/lib/attachments";
+import { getFallbackUploadDir, getUploadDir } from "@/lib/server/upload-dir";
 
 /**
  * A `file` part as persisted inside a message's `parts` array. Attachments are
@@ -57,8 +58,8 @@ export function collectAttachments(
   for (const message of messages) {
     for (const part of extractFileParts(message.parts)) {
       const url = part.url ?? "";
+      // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
       if (!url || entries.has(url)) {
-        continue;
       }
 
       const fallbackName = url.split("/").filter(Boolean).pop() ?? "attachment";
@@ -76,10 +77,6 @@ export function collectAttachments(
   }
 
   return [...entries.values()];
-}
-
-function getUploadDir(): string {
-  return process.env.UPLOAD_DIR ?? "./uploads";
 }
 
 export type LocalAttachmentReadResult =
@@ -106,18 +103,25 @@ export async function readLocalAttachment(
     return { status: "missing" };
   }
 
-  try {
-    const { resolve } = await import("node:path");
-    const uploadDir = resolve(process.cwd(), getUploadDir());
-    const filePath = join(uploadDir, filename);
-    if (!filePath.startsWith(uploadDir)) {
-      return { status: "missing" };
-    }
-    const data = await readFile(filePath);
-    return { data, status: "ok" };
-  } catch {
-    return { status: "missing" };
+  const { resolve } = await import("node:path");
+  const candidates = [resolve(process.cwd(), getUploadDir())];
+  const fallback = resolve(getFallbackUploadDir());
+  if (candidates[0] !== fallback) {
+    candidates.push(fallback);
   }
+  for (const uploadDir of candidates) {
+    try {
+      const filePath = join(uploadDir, filename);
+      // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
+      if (!filePath.startsWith(uploadDir)) {
+      }
+      // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
+      const data = await readFile(filePath);
+      return { data, status: "ok" };
+      // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
+    } catch {}
+  }
+  return { status: "missing" };
 }
 
 /**

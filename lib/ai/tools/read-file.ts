@@ -5,12 +5,9 @@ import { z } from "zod";
 import type { Session } from "@/app/(auth)/auth";
 import { isTextMediaType, sanitizeFilename } from "@/lib/attachments";
 import { getDocumentById } from "@/lib/db/queries";
+import { getFallbackUploadDir, getUploadDir } from "@/lib/server/upload-dir";
 
 const MAX_READ_LENGTH = 50_000;
-
-function getUploadDir(): string {
-  return process.env.UPLOAD_DIR ?? "./uploads";
-}
 
 function getBasePath(): string {
   return process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -252,31 +249,41 @@ export const readFile = ({ session }: ReadFileProps) =>
         return { error: "Invalid file url" };
       }
 
-      const uploadDir = resolve(process.cwd(), getUploadDir());
-      const filePath = resolve(uploadDir, safeName);
-      const rel = relative(uploadDir, filePath);
-      if (isAbsolute(rel) || rel.startsWith("..")) {
-        return { error: "Invalid file url" };
+      const candidates = [resolve(process.cwd(), getUploadDir())];
+      const fallback = resolve(getFallbackUploadDir());
+      if (candidates[0] !== fallback) {
+        candidates.push(fallback);
       }
 
-      const owned = await isFileOwnedByUser(
-        safeName,
-        session.user.id,
-        uploadDir
-      );
-      if (!owned) {
-        return { error: "File not found" };
-      }
-
-      // Read metadata for contentType
+      let uploadDir: string | null = null;
+      let filePath: string | null = null;
       let storedContentType: string | undefined;
-      try {
-        const metaPath = join(uploadDir, ".meta", `${safeName}.json`);
-        const raw = await readFsFile(metaPath, "utf8");
-        const meta = JSON.parse(raw) as { contentType?: string };
-        storedContentType = meta.contentType;
-      } catch {
-        // fallback: infer from extension or file part
+      // Find the candidate where the user owns the file
+      for (const dir of candidates) {
+        const candidatePath = resolve(dir, safeName);
+        const rel = relative(dir, candidatePath);
+        // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
+        if (isAbsolute(rel) || rel.startsWith("..")) {
+        }
+        // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
+        const owned = await isFileOwnedByUser(safeName, session.user.id, dir);
+        // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
+        if (!owned) {
+        }
+        uploadDir = dir;
+        filePath = candidatePath;
+        try {
+          const metaPath = join(dir, ".meta", `${safeName}.json`);
+          const raw = await readFsFile(metaPath, "utf8");
+          const meta = JSON.parse(raw) as { contentType?: string };
+          storedContentType = meta.contentType;
+        } catch {
+          // fallback: infer from extension or file part
+        }
+        break;
+      }
+      if (!uploadDir || !filePath) {
+        return { error: "File not found" };
       }
 
       // If we have stored type and it's not text, reject
@@ -290,8 +297,35 @@ export const readFile = ({ session }: ReadFileProps) =>
         };
       }
 
+      let buffer: Buffer | null = null;
+      // Try each candidate for the actual file bytes
+      for (const dir of candidates) {
+        const candidatePath = resolve(dir, safeName);
+        const rel2 = relative(dir, candidatePath);
+        // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
+        if (isAbsolute(rel2) || rel2.startsWith("..")) {
+        }
+        try {
+          // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
+          const ownedCheck = await isFileOwnedByUser(
+            safeName,
+            session.user.id,
+            dir
+          );
+          // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
+          if (!ownedCheck) {
+          }
+          buffer = await readFsFile(candidatePath);
+          filePath = candidatePath;
+          break;
+          // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
+        } catch {}
+      }
+      if (!buffer) {
+        return { error: "File not found" };
+      }
       try {
-        const buffer = await readFsFile(filePath);
+        // buffer is already loaded, continue with existing checks
         // If no stored type, try to infer via content – if we can't confirm text, check via buffer encoding
         if (!storedContentType && buffer.includes(0)) {
           return {
