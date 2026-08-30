@@ -17,6 +17,7 @@ import {
   MAX_FILE_SIZE,
   MAX_VIDEO_AUDIO_FILE_SIZE,
   normalizeMediaType,
+  UPLOAD_LIMITS_MESSAGE,
 } from "@/lib/attachments";
 import { ChatbotError } from "@/lib/errors";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
@@ -85,7 +86,7 @@ const FileSchema = z.object({
         return file.size <= limit;
       },
       {
-        message: "File size exceeds limit",
+        message: UPLOAD_LIMITS_MESSAGE,
       }
     )
     .refine(
