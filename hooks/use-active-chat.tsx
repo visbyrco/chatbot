@@ -196,12 +196,16 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
         ch.postMessage({ type: "mutate" });
         ch.close();
         // biome-ignore lint/suspicious/noEmptyBlockStatements: broadcast fallback non-critical
-      } catch {}
+      } catch {
+        /* ignore */
+      }
       // localStorage fallback for Safari / older browsers
       try {
         localStorage.setItem("chat-history-ping", String(Date.now()));
         // biome-ignore lint/suspicious/noEmptyBlockStatements: storage fallback non-critical
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     },
     sendAutomaticallyWhen: ({ messages: currentMessages }) => {
       const lastMessage = currentMessages.at(-1);
@@ -401,6 +405,19 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   const isReadonly = isNewChat ? false : (chatData?.isReadonly ?? false);
 
+  const handleStop = useCallback(async () => {
+    // Tell the server to abort the generation (keeps tab-close keep-alive separate).
+    // Fire-and-forget so UI stops immediately even if cancel 404s.
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    fetch(`${base}/api/chat/${chatId}/cancel`, {
+      keepalive: true,
+      method: "POST",
+    }).catch(() => {
+      /* ignore */
+    });
+    await stop();
+  }, [chatId, stop]);
+
   const value = useMemo<ActiveChatContextValue>(
     () => ({
       addToolApprovalResponse,
@@ -420,7 +437,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setMessages,
       setReasoningEffort,
       status,
-      stop,
+      stop: handleStop,
       visibilityType: visibility,
     }),
     [
@@ -429,7 +446,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setMessages,
       sendMessage,
       status,
-      stop,
+      handleStop,
       regenerate,
       addToolApprovalResponse,
       input,

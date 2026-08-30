@@ -37,25 +37,56 @@ const createMockModel = (): LanguageModel =>
       usage: mockUsage,
       warnings: [],
     }),
-    doStream: ({ prompt }: { prompt: unknown }) => {
+    doStream: ({
+      abortSignal,
+      prompt,
+    }: {
+      abortSignal?: AbortSignal;
+      prompt: unknown;
+    }) => {
       const response = getResponseForPrompt(prompt);
       const words = response.split(" ");
 
       return {
         stream: new ReadableStream({
           async start(controller) {
+            if (abortSignal?.aborted) {
+              controller.close();
+              return;
+            }
+            const onAbort = () => {
+              try {
+                controller.close();
+              } catch {
+                /* ignore */
+              }
+            };
+            abortSignal?.addEventListener("abort", onAbort, { once: true });
             controller.enqueue({ id: "t1", type: "text-start" });
-            await words.reduce<Promise<void>>(async (previous, word) => {
-              await previous;
+            for (const word of words) {
+              if (abortSignal?.aborted) {
+                break;
+              }
               controller.enqueue({
                 delta: `${word} `,
                 id: "t1",
                 type: "text-delta",
               });
+              // biome-ignore lint/performance/noAwaitInLoops: mock streaming needs sequential delay
               await new Promise((resolve) => {
                 setTimeout(resolve, 200);
               });
-            }, Promise.resolve());
+            }
+            if (abortSignal?.aborted) {
+              abortSignal?.removeEventListener("abort", onAbort);
+              try {
+                controller.close();
+              } catch {
+                /* ignore */
+              }
+              return;
+            }
+            abortSignal?.removeEventListener("abort", onAbort);
             controller.enqueue({ id: "t1", type: "text-end" });
             controller.enqueue({
               finishReason: "stop",
