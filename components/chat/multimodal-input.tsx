@@ -45,6 +45,7 @@ import type {
 } from "@/lib/ai/models.client";
 import {
   getMaxSizeForFile,
+  inferMediaTypeForFile,
   UPLOAD_LIMITS_MESSAGE,
 } from "@/lib/attachment-constants";
 import { syncPreference } from "@/lib/preferences-sync";
@@ -295,7 +296,28 @@ function PureMultimodalInput({
 
   const uploadFile = useCallback(async (file: File) => {
     const maxSize = getMaxSizeForFile({ name: file.name, type: file.type });
-    if (file.size > maxSize) {
+    const size = Number((file as unknown as { size: unknown }).size);
+    if (!Number.isFinite(size)) {
+      // Fail open: if size is not a finite number, let the server decide
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[upload] non-finite size, skipping client preflight", {
+          name: file.name,
+          size: (file as unknown as { size: unknown }).size,
+        });
+      }
+    } else if (size > maxSize) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[upload] rejected by client preflight", {
+          maxSize,
+          mediaType: inferMediaTypeForFile({
+            name: file.name,
+            type: file.type,
+          }),
+          name: file.name,
+          size,
+          type: file.type,
+        });
+      }
       toast.error(UPLOAD_LIMITS_MESSAGE);
       return;
     }
