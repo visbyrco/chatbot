@@ -71,6 +71,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  EXT_TO_MEDIA_TYPE,
+  isGenericOctetStream,
+} from "@/lib/attachment-constants";
 import { useEnterBehavior } from "@/lib/enter-behavior";
 import { cn } from "@/lib/utils";
 
@@ -182,6 +186,7 @@ export const PromptInputProvider = ({
   >([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // oxlint-disable-next-line eslint(no-empty-function)
+  // biome-ignore lint/suspicious/noEmptyBlockStatements: placeholder no-op initializer
   const openRef = useRef<() => void>(() => {});
 
   const add = useCallback((files: File[] | FileList) => {
@@ -441,10 +446,25 @@ export const PromptInput = ({
         .filter(Boolean);
 
       return patterns.some((pattern) => {
+        if (pattern.startsWith(".")) {
+          return f.name.toLowerCase().endsWith(pattern.toLowerCase());
+        }
         if (pattern.endsWith("/*")) {
-          // e.g: image/* -> image/
           const prefix = pattern.slice(0, -1);
-          return f.type.startsWith(prefix);
+          if (f.type.startsWith(prefix)) {
+            return true;
+          }
+          if (isGenericOctetStream(f.type)) {
+            const ext = `.${f.name.toLowerCase().split(".").pop() ?? ""}`;
+            const inferred = EXT_TO_MEDIA_TYPE[ext];
+            return inferred?.startsWith(prefix) ?? false;
+          }
+          return false;
+        }
+        if (isGenericOctetStream(f.type)) {
+          const ext = `.${f.name.toLowerCase().split(".").pop() ?? ""}`;
+          const inferred = EXT_TO_MEDIA_TYPE[ext];
+          return inferred === pattern;
         }
         return f.type === pattern;
       });
@@ -1045,9 +1065,9 @@ export const PromptInputButton = ({
       <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent side={side}>
         {tooltipContent}
-        {shortcut && (
+        {shortcut ? (
           <span className="ml-2 text-muted-foreground">{shortcut}</span>
-        )}
+        ) : null}
       </TooltipContent>
     </Tooltip>
   );

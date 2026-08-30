@@ -6,6 +6,10 @@ import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
 import {
+  EXT_TO_MEDIA_TYPE,
+  isGenericOctetStream,
+} from "@/lib/attachment-constants";
+import {
   isAllowedMediaType,
   isAudioMediaType,
   isBlockedMediaType,
@@ -36,6 +40,7 @@ const ALLOWED_FILE_EXTS = new Set([
   ".png",
   ".txt",
   ".webp",
+  ".xml",
   ".yaml",
   ".yml",
   // video
@@ -56,13 +61,28 @@ const ALLOWED_FILE_EXTS = new Set([
   ".oga",
 ]);
 
+function inferMediaType(file: Blob, filename: string): string {
+  const raw = (file as File).type?.trim() ?? "";
+  if (raw !== "" && !isGenericOctetStream(raw)) {
+    return normalizeMediaType(raw);
+  }
+  const ext = extname(filename).toLowerCase();
+  const mapped = EXT_TO_MEDIA_TYPE[ext];
+  if (mapped) {
+    return mapped;
+  }
+  return normalizeMediaType(raw);
+}
+
 const FileSchema = z.object({
   file: z
     .instanceof(Blob)
     .refine(
       (file) => {
+        const name = (file as File).name ?? "";
+        const mediaType = inferMediaType(file, name);
         const limit =
-          isVideoMediaType(file.type) || isAudioMediaType(file.type)
+          isVideoMediaType(mediaType) || isAudioMediaType(mediaType)
             ? MAX_VIDEO_AUDIO_FILE_SIZE
             : MAX_FILE_SIZE;
         return file.size <= limit;
@@ -71,12 +91,27 @@ const FileSchema = z.object({
         message: "File size exceeds limit",
       }
     )
-    .refine((file) => !isBlockedMediaType(file.type), {
-      message: "Blocked file type",
-    })
-    .refine((file) => isAllowedMediaType(file.type), {
-      message: "File type should be an image, PDF, text, video, or audio file",
-    }),
+    .refine(
+      (file) => {
+        const name = (file as File).name ?? "";
+        const mediaType = inferMediaType(file, name);
+        return !isBlockedMediaType(mediaType);
+      },
+      {
+        message: "Blocked file type",
+      }
+    )
+    .refine(
+      (file) => {
+        const name = (file as File).name ?? "";
+        const mediaType = inferMediaType(file, name);
+        return isAllowedMediaType(mediaType);
+      },
+      {
+        message:
+          "File type should be an image, PDF, text, video, or audio file",
+      }
+    ),
 });
 
 export async function POST(request: Request) {
@@ -118,6 +153,7 @@ export async function POST(request: Request) {
     }
 
     const filename = (formData.get("file") as File).name;
+    const inferredType = inferMediaType(file as File, filename);
     const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
     const rawExt = extname(sanitized).toLowerCase();
     const ext = ALLOWED_FILE_EXTS.has(rawExt) ? rawExt : ".bin";
@@ -145,7 +181,7 @@ export async function POST(request: Request) {
         await writeFile(
           metaPath,
           JSON.stringify({
-            contentType: normalizeMediaType(file.type),
+            contentType: inferredType,
             createdAt: new Date().toISOString(),
             originalName: filename.slice(0, 100),
             safeName,
@@ -161,7 +197,7 @@ export async function POST(request: Request) {
 
       const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
       return NextResponse.json({
-        contentType: normalizeMediaType(file.type),
+        contentType: inferredType,
         name: filename.slice(0, 100),
         pathname: safeName,
         size: fileBuffer.length,
