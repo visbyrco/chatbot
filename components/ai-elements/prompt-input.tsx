@@ -182,6 +182,7 @@ export const PromptInputProvider = ({
   >([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // oxlint-disable-next-line eslint(no-empty-function)
+  // biome-ignore lint/suspicious/noEmptyBlockStatements: placeholder no-op initializer
   const openRef = useRef<() => void>(() => {});
 
   const add = useCallback((files: File[] | FileList) => {
@@ -441,10 +442,95 @@ export const PromptInput = ({
         .filter(Boolean);
 
       return patterns.some((pattern) => {
+        if (pattern.startsWith(".")) {
+          return f.name.toLowerCase().endsWith(pattern.toLowerCase());
+        }
         if (pattern.endsWith("/*")) {
-          // e.g: image/* -> image/
           const prefix = pattern.slice(0, -1);
-          return f.type.startsWith(prefix);
+          if (f.type.startsWith(prefix)) {
+            return true;
+          }
+          // Empty type fallback: check extension for image/* etc.
+          if (f.type === "") {
+            const ext = f.name.toLowerCase().split(".").pop() ?? "";
+            const imageExts = [
+              "jpg",
+              "jpeg",
+              "png",
+              "webp",
+              "gif",
+              "heic",
+              "heif",
+              "avif",
+            ];
+            const videoExts = [
+              "mp4",
+              "webm",
+              "mov",
+              "avi",
+              "mpeg",
+              "mpg",
+              "ogg",
+              "ogv",
+            ];
+            const audioExts = [
+              "mp3",
+              "wav",
+              "flac",
+              "aac",
+              "m4a",
+              "oga",
+              "ogg",
+            ];
+            if (prefix === "image/" && imageExts.includes(ext)) {
+              return true;
+            }
+            if (prefix === "video/" && videoExts.includes(ext)) {
+              return true;
+            }
+            if (prefix === "audio/" && audioExts.includes(ext)) {
+              return true;
+            }
+          }
+          return false;
+        }
+        if (f.type === "") {
+          // For empty MIME types, infer from extension and match against mime pattern
+          const ext = `.${f.name.toLowerCase().split(".").pop() ?? ""}`;
+          const extToMime: Record<string, string> = {
+            ".aac": "audio/aac",
+            ".avi": "video/x-msvideo",
+            ".avif": "image/avif",
+            ".csv": "text/csv",
+            ".flac": "audio/flac",
+            ".gif": "image/gif",
+            ".heic": "image/heic",
+            ".heif": "image/heif",
+            ".jpeg": "image/jpeg",
+            ".jpg": "image/jpeg",
+            ".json": "application/json",
+            ".m4a": "audio/mp4",
+            ".md": "text/markdown",
+            ".mov": "video/quicktime",
+            ".mp3": "audio/mpeg",
+            ".mp4": "video/mp4",
+            ".mpeg": "video/mpeg",
+            ".mpg": "video/mpeg",
+            ".oga": "audio/ogg",
+            ".ogg": "video/ogg",
+            ".ogv": "video/ogg",
+            ".pdf": "application/pdf",
+            ".png": "image/png",
+            ".txt": "text/plain",
+            ".wav": "audio/wav",
+            ".webm": "video/webm",
+            ".webp": "image/webp",
+            ".xml": "application/xml",
+            ".yaml": "application/yaml",
+            ".yml": "application/yaml",
+          };
+          const inferred = extToMime[ext];
+          return inferred === pattern;
         }
         return f.type === pattern;
       });
@@ -1045,9 +1131,9 @@ export const PromptInputButton = ({
       <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent side={side}>
         {tooltipContent}
-        {shortcut && (
+        {shortcut ? (
           <span className="ml-2 text-muted-foreground">{shortcut}</span>
-        )}
+        ) : null}
       </TooltipContent>
     </Tooltip>
   );
