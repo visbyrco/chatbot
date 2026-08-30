@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { extname, join, resolve } from "node:path";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -12,6 +12,7 @@ import {
   isVideoMediaType,
   MAX_FILE_SIZE,
   MAX_VIDEO_AUDIO_FILE_SIZE,
+  normalizeMediaType,
 } from "@/lib/attachments";
 import { ChatbotError } from "@/lib/errors";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
@@ -126,7 +127,14 @@ export async function POST(request: Request) {
     try {
       const uploadDir = resolve(process.cwd(), getUploadDir());
       await mkdir(uploadDir, { recursive: true });
-      const filePath = join(uploadDir, safeName);
+      const filePath = resolve(uploadDir, safeName);
+      const rel = relative(uploadDir, filePath);
+      if (isAbsolute(rel) || rel.startsWith("..")) {
+        return NextResponse.json(
+          { error: "Invalid filename" },
+          { status: 400 }
+        );
+      }
       await writeFile(filePath, fileBuffer);
 
       // Persist ownership metadata for authenticated file serving.
@@ -137,7 +145,7 @@ export async function POST(request: Request) {
         await writeFile(
           metaPath,
           JSON.stringify({
-            contentType: file.type,
+            contentType: normalizeMediaType(file.type),
             createdAt: new Date().toISOString(),
             originalName: filename.slice(0, 100),
             safeName,
@@ -153,7 +161,7 @@ export async function POST(request: Request) {
 
       const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
       return NextResponse.json({
-        contentType: file.type,
+        contentType: normalizeMediaType(file.type),
         name: filename.slice(0, 100),
         pathname: safeName,
         size: fileBuffer.length,

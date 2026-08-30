@@ -518,7 +518,7 @@ function PureMultimodalInput({
         )}
 
       <input
-        accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/heic,image/heif,image/heic-sequence,image/heif-sequence,image/avif,application/pdf,text/plain,text/markdown,text/csv,application/json,application/xml,text/yaml,application/yaml,video/mp4,video/webm,video/quicktime,video/x-msvideo,video/mpeg,video/ogg,audio/mpeg,audio/wav,audio/x-wav,audio/wave,audio/webm,audio/ogg,audio/mp4,audio/flac,audio/x-flac,audio/aac,audio/x-m4a,audio/x-aac,.heic,.heif,.avif,.png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.csv,.json,.xml,.yaml,.yml,.mp4,.webm,.mov,.avi,.mpeg,.mpg,.ogg,.ogv,.mp3,.wav,.flac,.aac,.m4a,.oga"
+        accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/avif,application/pdf,text/plain,text/markdown,text/csv,application/json,application/xml,text/yaml,application/yaml,video/mp4,video/webm,video/quicktime,video/x-msvideo,video/mpeg,video/ogg,audio/mpeg,audio/wav,audio/x-wav,audio/wave,audio/webm,audio/ogg,audio/mp4,audio/flac,audio/x-flac,audio/aac,audio/x-m4a,audio/x-aac,.heic,.heif,.avif,.png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.csv,.json,.xml,.yaml,.yml,.mp4,.webm,.mov,.avi,.mpeg,.mpg,.ogg,.ogv,.mp3,.wav,.flac,.aac,.m4a,.oga"
         className="pointer-events-none fixed -top-4 -left-4 size-0.5 opacity-0"
         multiple
         onChange={handleFileChange}

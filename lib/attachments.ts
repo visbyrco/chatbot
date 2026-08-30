@@ -9,6 +9,13 @@ import type { ChatMessage } from "@/lib/types";
 // resolver so they can never drift apart.
 // ---------------------------------------------------------------------------
 
+// Note: HEIC/HEIF/AVIF are allowed for upload and served with correct
+// Content-Type, but browser preview is limited (HEIC only in Safari) and
+// some AI providers (OpenAI/Anthropic) only support jpeg/png/gif/webp.
+// Those providers will receive the bytes as image/heic etc and may reject
+// or drop them. A future follow-up should transcode HEIC/HEIF/AVIF to
+// jpeg/webp server-side (e.g. via sharp) before forwarding to the model.
+// AVIF preview works in Chromium/Firefox; HEIC/HEIF degrade to a file tile.
 export const IMAGE_MEDIA_TYPES = [
   "image/jpeg",
   "image/jpg",
@@ -21,6 +28,23 @@ export const IMAGE_MEDIA_TYPES = [
   "image/heif-sequence",
   "image/avif",
 ] as const;
+
+// Normalize non-standard or sequence media types to their canonical form before
+// forwarding to AI providers. Providers reject non-IANA types like image/jpg
+// and may not understand sequence variants; browsers should already send the
+// canonical type but we handle edge cases defensively.
+export function normalizeMediaType(mediaType: string): string {
+  if (mediaType === "image/jpg") {
+    return "image/jpeg";
+  }
+  if (mediaType === "image/heic-sequence") {
+    return "image/heic";
+  }
+  if (mediaType === "image/heif-sequence") {
+    return "image/heif";
+  }
+  return mediaType;
+}
 
 export const PDF_MEDIA_TYPE = "application/pdf" as const;
 
@@ -270,7 +294,7 @@ export async function localFileUrlToDataUrl(
       });
       return null;
     }
-    return `data:${mediaType};base64,${buffer.toString("base64")}`;
+    return `data:${normalizeMediaType(mediaType)};base64,${buffer.toString("base64")}`;
   } catch (error) {
     console.error("Failed to read attachment file:", { error, filename });
     return null;
