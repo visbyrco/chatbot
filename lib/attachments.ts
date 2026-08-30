@@ -29,10 +29,8 @@ export const IMAGE_MEDIA_TYPES = [
   "image/avif",
 ] as const;
 
-// Normalize non-standard or sequence media types to their canonical form before
-// forwarding to AI providers. Providers reject non-IANA types like image/jpg
-// and may not understand sequence variants; browsers should already send the
-// canonical type but we handle edge cases defensively.
+// Normalize duplicated from attachment-constants for server file (keep client-safe file independent).
+// Defined here to avoid circular import; both copies are identical.
 export function normalizeMediaType(mediaType: string): string {
   if (mediaType === "image/jpg") {
     return "image/jpeg";
@@ -103,6 +101,20 @@ export const ALLOWED_MEDIA_TYPES: readonly string[] = [
   ...VIDEO_MEDIA_TYPES,
   ...AUDIO_MEDIA_TYPES,
 ];
+
+// Re-export extension map from single source (attachment-constants) for backward compat.
+// The canonical definition lives in attachment-constants.ts.
+export {
+  AUDIO_EXTS,
+  EXT_TO_MEDIA_TYPE,
+  getMediaTypeForExtension,
+  IMAGE_EXTS,
+  inferMediaTypeForFile,
+  inferMediaTypeFromFilename,
+  isGenericOctetStream,
+  TEXT_EXTS,
+  VIDEO_EXTS,
+} from "./attachment-constants";
 
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB default for images/PDF/text
 export const MAX_VIDEO_AUDIO_FILE_SIZE = 50 * 1024 * 1024; // 50 MB for video/audio only

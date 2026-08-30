@@ -71,6 +71,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  EXT_TO_MEDIA_TYPE,
+  isGenericOctetStream,
+} from "@/lib/attachment-constants";
 import { useEnterBehavior } from "@/lib/enter-behavior";
 import { cn } from "@/lib/utils";
 
@@ -450,86 +454,16 @@ export const PromptInput = ({
           if (f.type.startsWith(prefix)) {
             return true;
           }
-          // Empty type fallback: check extension for image/* etc.
-          if (f.type === "") {
-            const ext = f.name.toLowerCase().split(".").pop() ?? "";
-            const imageExts = [
-              "jpg",
-              "jpeg",
-              "png",
-              "webp",
-              "gif",
-              "heic",
-              "heif",
-              "avif",
-            ];
-            const videoExts = [
-              "mp4",
-              "webm",
-              "mov",
-              "avi",
-              "mpeg",
-              "mpg",
-              "ogg",
-              "ogv",
-            ];
-            const audioExts = [
-              "mp3",
-              "wav",
-              "flac",
-              "aac",
-              "m4a",
-              "oga",
-              "ogg",
-            ];
-            if (prefix === "image/" && imageExts.includes(ext)) {
-              return true;
-            }
-            if (prefix === "video/" && videoExts.includes(ext)) {
-              return true;
-            }
-            if (prefix === "audio/" && audioExts.includes(ext)) {
-              return true;
-            }
+          if (isGenericOctetStream(f.type)) {
+            const ext = `.${f.name.toLowerCase().split(".").pop() ?? ""}`;
+            const inferred = EXT_TO_MEDIA_TYPE[ext];
+            return inferred?.startsWith(prefix) ?? false;
           }
           return false;
         }
-        if (f.type === "") {
-          // For empty MIME types, infer from extension and match against mime pattern
+        if (isGenericOctetStream(f.type)) {
           const ext = `.${f.name.toLowerCase().split(".").pop() ?? ""}`;
-          const extToMime: Record<string, string> = {
-            ".aac": "audio/aac",
-            ".avi": "video/x-msvideo",
-            ".avif": "image/avif",
-            ".csv": "text/csv",
-            ".flac": "audio/flac",
-            ".gif": "image/gif",
-            ".heic": "image/heic",
-            ".heif": "image/heif",
-            ".jpeg": "image/jpeg",
-            ".jpg": "image/jpeg",
-            ".json": "application/json",
-            ".m4a": "audio/mp4",
-            ".md": "text/markdown",
-            ".mov": "video/quicktime",
-            ".mp3": "audio/mpeg",
-            ".mp4": "video/mp4",
-            ".mpeg": "video/mpeg",
-            ".mpg": "video/mpeg",
-            ".oga": "audio/ogg",
-            ".ogg": "video/ogg",
-            ".ogv": "video/ogg",
-            ".pdf": "application/pdf",
-            ".png": "image/png",
-            ".txt": "text/plain",
-            ".wav": "audio/wav",
-            ".webm": "video/webm",
-            ".webp": "image/webp",
-            ".xml": "application/xml",
-            ".yaml": "application/yaml",
-            ".yml": "application/yaml",
-          };
-          const inferred = extToMime[ext];
+          const inferred = EXT_TO_MEDIA_TYPE[ext];
           return inferred === pattern;
         }
         return f.type === pattern;

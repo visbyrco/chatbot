@@ -6,6 +6,10 @@ import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
 import {
+  EXT_TO_MEDIA_TYPE,
+  isGenericOctetStream,
+} from "@/lib/attachment-constants";
+import {
   isAllowedMediaType,
   isAudioMediaType,
   isBlockedMediaType,
@@ -36,6 +40,7 @@ const ALLOWED_FILE_EXTS = new Set([
   ".png",
   ".txt",
   ".webp",
+  ".xml",
   ".yaml",
   ".yml",
   // video
@@ -56,45 +61,9 @@ const ALLOWED_FILE_EXTS = new Set([
   ".oga",
 ]);
 
-// Map file extensions to canonical media types for fallback when the browser
-// sends an empty or generic type (e.g. "" or "application/octet-stream" for
-// .csv/.md/.yaml on some OSes). Only whitelisted extensions are mapped —
-// unknown extensions fall through to the original type and are rejected.
-const EXT_TO_MEDIA_TYPE: Record<string, string> = {
-  ".aac": "audio/aac",
-  ".avi": "video/x-msvideo",
-  ".avif": "image/avif",
-  ".csv": "text/csv",
-  ".flac": "audio/flac",
-  ".gif": "image/gif",
-  ".heic": "image/heic",
-  ".heif": "image/heif",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".json": "application/json",
-  ".m4a": "audio/mp4",
-  ".md": "text/markdown",
-  ".mov": "video/quicktime",
-  ".mp3": "audio/mpeg",
-  ".mp4": "video/mp4",
-  ".mpeg": "video/mpeg",
-  ".mpg": "video/mpeg",
-  ".oga": "audio/ogg",
-  ".ogg": "video/ogg",
-  ".ogv": "video/ogg",
-  ".pdf": "application/pdf",
-  ".png": "image/png",
-  ".txt": "text/plain",
-  ".wav": "audio/wav",
-  ".webm": "video/webm",
-  ".webp": "image/webp",
-  ".yaml": "application/yaml",
-  ".yml": "application/yaml",
-};
-
 function inferMediaType(file: Blob, filename: string): string {
   const raw = (file as File).type?.trim() ?? "";
-  if (raw !== "" && raw !== "application/octet-stream") {
+  if (raw !== "" && !isGenericOctetStream(raw)) {
     return normalizeMediaType(raw);
   }
   const ext = extname(filename).toLowerCase();
