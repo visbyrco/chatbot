@@ -13,6 +13,12 @@ import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import { decrypt } from "@/lib/ai/encryption";
 import { getEntitlements } from "@/lib/ai/entitlements";
+import {
+  clearAbortKey,
+  isAbortedViaRedis,
+  registerGeneration,
+  unregisterGeneration,
+} from "@/lib/ai/generation-abort";
 import { getCustomCapabilitiesForUser } from "@/lib/ai/models";
 import { calculateUsageCost, getModelPricing } from "@/lib/ai/pricing";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
@@ -523,8 +529,40 @@ export async function POST(request: Request) {
               }
             : undefined;
 
+        // Explicit cancel controller: Stop button aborts via /api/chat/[id]/cancel,
+        // while tab-close (request.signal abort) is intentionally ignored so
+        // generation keeps running in the background and remains resumable.
+        const generationController = new AbortController();
+        registerGeneration(id, generationController);
+        // If a cancel was published via Redis (cross-instance), abort locally
+        let redisPoll: ReturnType<typeof setInterval> | undefined;
+        if (process.env.REDIS_URL) {
+          redisPoll = setInterval(async () => {
+            try {
+              if (await isAbortedViaRedis(id)) {
+                if (!generationController.signal.aborted) {
+                  generationController.abort();
+                }
+                if (redisPoll) {
+                  clearInterval(redisPoll);
+                }
+              }
+            } catch {
+              /* ignore */
+            }
+          }, 250);
+          // allow process to exit without waiting for interval
+          (redisPoll as unknown as { unref?: () => void })?.unref?.();
+        }
+        // Clean up polling on abort
+        generationController.signal.addEventListener("abort", () => {
+          if (redisPoll) {
+            clearInterval(redisPoll);
+          }
+        });
+
         const result = streamText({
-          // intentionally omitted abortSignal to keep generation alive after tab close; client Stop still stops rendering
+          abortSignal: generationController.signal,
           activeTools: supportsTools
             ? TOOL_IDS.filter(
                 (toolId) =>
@@ -541,6 +579,13 @@ export async function POST(request: Request) {
           model: await getLanguageModel(chatModel),
           onAbort() {
             stopWaitingStatus();
+            if (redisPoll) {
+              clearInterval(redisPoll);
+            }
+            unregisterGeneration(id);
+            clearAbortKey(id).catch(() => {
+              /* ignore */
+            });
           },
           onChunk({ chunk }) {
             if (isModelStreamActivity(chunk)) {
@@ -549,11 +594,25 @@ export async function POST(request: Request) {
           },
           onEnd() {
             stopWaitingStatus();
+            if (redisPoll) {
+              clearInterval(redisPoll);
+            }
+            unregisterGeneration(id);
+            clearAbortKey(id).catch(() => {
+              /* ignore */
+            });
           },
           onError({ error }: { error: unknown }) {
             console.error("streamText error:", error);
             lastStreamError = error;
             stopWaitingStatus();
+            if (redisPoll) {
+              clearInterval(redisPoll);
+            }
+            unregisterGeneration(id);
+            clearAbortKey(id).catch(() => {
+              /* ignore */
+            });
           },
           providerOptions,
           reasoning: reasoningValue,
