@@ -43,6 +43,10 @@ import type {
   ModelCapabilities,
   ReasoningEffort,
 } from "@/lib/ai/models.client";
+import {
+  getMaxSizeForFile,
+  UPLOAD_LIMITS_MESSAGE,
+} from "@/lib/attachment-constants";
 import { syncPreference } from "@/lib/preferences-sync";
 import type { Attachment, ChatMessage, VisibilityType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -290,6 +294,12 @@ function PureMultimodalInput({
   ]);
 
   const uploadFile = useCallback(async (file: File) => {
+    const maxSize = getMaxSizeForFile({ name: file.name, type: file.type });
+    if (file.size > maxSize) {
+      toast.error(UPLOAD_LIMITS_MESSAGE);
+      return;
+    }
+
     const formData = new FormData();
     formData.append("file", file);
 
@@ -312,8 +322,22 @@ function PureMultimodalInput({
           url,
         };
       }
-      const { error } = await response.json();
-      toast.error(error);
+      if (response.status === 413) {
+        toast.error(
+          "File too large — server limit is 500 MB. Try a smaller file."
+        );
+        return;
+      }
+      let errorMessage = "Failed to upload file, please try again!";
+      try {
+        const data = await response.json();
+        if (data?.error) {
+          errorMessage = data.error;
+        }
+      } catch {
+        // response was not JSON (e.g. nginx plain 413), keep default
+      }
+      toast.error(errorMessage);
     } catch {
       toast.error("Failed to upload file, please try again!");
     }

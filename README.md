@@ -98,6 +98,15 @@ docker compose up
 
 Migrations run automatically on container start.
 
+> **Self-hosting behind nginx:** if you proxy to the app with nginx (as on
+> `server.hkjc.uk` for `chat.visbyr.com`), raise the upload limit. Nginx
+> defaults to `client_max_body_size 1m` and will return `413 Request Entity Too
+> Large` for files over 1 MB even though the app allows up to 500 MB. Add `client_max_body_size 500m;` inside the
+> `server { }` block and reload (`nginx -t && systemctl reload nginx`). See
+> `docs/nginx.conf.example` for a full example. The Next.js middleware clone
+> limit is already raised to 550 MB via `experimental.proxyClientMaxBodySize` in
+> `next.config.ts`. Vercel preview is not affected.
+
 ## Demo Mode (no external services)
 
 Set `DEMO_MODE=1` to run the app with **zero dependencies** — no Postgres, no

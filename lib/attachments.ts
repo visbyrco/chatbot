@@ -107,17 +107,20 @@ export const ALLOWED_MEDIA_TYPES: readonly string[] = [
 export {
   AUDIO_EXTS,
   EXT_TO_MEDIA_TYPE,
+  getMaxSizeForFile,
+  getMaxSizeForMediaType,
   getMediaTypeForExtension,
   IMAGE_EXTS,
   inferMediaTypeForFile,
   inferMediaTypeFromFilename,
   isGenericOctetStream,
+  isVideoOrAudioMediaType,
+  MAX_FILE_SIZE,
+  MAX_VIDEO_AUDIO_FILE_SIZE,
   TEXT_EXTS,
+  UPLOAD_LIMITS_MESSAGE,
   VIDEO_EXTS,
 } from "./attachment-constants";
-
-export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB default for images/PDF/text
-export const MAX_VIDEO_AUDIO_FILE_SIZE = 50 * 1024 * 1024; // 50 MB for video/audio only
 
 export function isBlockedMediaType(mediaType: string | undefined): boolean {
   return (

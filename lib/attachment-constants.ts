@@ -129,3 +129,51 @@ export function inferMediaTypeForFile(file: {
 }): string {
   return inferMediaTypeFromFilename(file.name, file.type);
 }
+
+// Client-safe size limits (mirrors lib/attachments.ts — keep in sync)
+export const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
+export const MAX_VIDEO_AUDIO_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
+export const UPLOAD_LIMITS_MESSAGE = "File too large — max 500 MB";
+
+const VIDEO_MEDIA_TYPES_SET = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-msvideo",
+  "video/mpeg",
+  "video/ogg",
+]);
+const AUDIO_MEDIA_TYPES_SET = new Set([
+  "audio/mpeg",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
+  "audio/webm",
+  "audio/ogg",
+  "audio/mp4",
+  "audio/flac",
+  "audio/x-flac",
+  "audio/aac",
+  "audio/x-m4a",
+  "audio/x-aac",
+]);
+
+export function isVideoOrAudioMediaType(mediaType: string): boolean {
+  return (
+    VIDEO_MEDIA_TYPES_SET.has(mediaType) || AUDIO_MEDIA_TYPES_SET.has(mediaType)
+  );
+}
+
+export function getMaxSizeForMediaType(mediaType: string): number {
+  return isVideoOrAudioMediaType(mediaType)
+    ? MAX_VIDEO_AUDIO_FILE_SIZE
+    : MAX_FILE_SIZE;
+}
+
+export function getMaxSizeForFile(file: {
+  type: string;
+  name: string;
+}): number {
+  const mediaType = inferMediaTypeForFile(file);
+  return getMaxSizeForMediaType(mediaType);
+}
