@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     optimizePackageImports: ["framer-motion", "shiki", "streamdown"],
+    // Middleware clones the request body (getCloneableBody). Default is 10 MB,
+    // which truncates uploads that the app allows up to 500 MB.
+    // Raise to 550 MB to cover 500 MB + multipart overhead.
+    proxyClientMaxBodySize: "550mb",
   },
   async headers() {
     // Content-Security-Policy is set dynamically per-request with a nonce
