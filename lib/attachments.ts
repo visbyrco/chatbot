@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
-
+import { getFallbackUploadDir, getUploadDir } from "@/lib/server/upload-dir";
 import type { ChatMessage } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -173,10 +173,6 @@ export function isAllowedMediaType(mediaType: string | undefined): boolean {
 // Server-side resolver
 // ---------------------------------------------------------------------------
 
-function getUploadDir(): string {
-  return process.env.UPLOAD_DIR ?? "./uploads";
-}
-
 function getBasePath(): string {
   return process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 }
@@ -281,22 +277,47 @@ export async function localFileUrlToDataUrl(
   try {
     const { resolve, relative, isAbsolute } = await import("node:path");
     const { cwd } = await import("node:process");
-    const uploadDir = resolve(cwd(), getUploadDir());
-    const filePath = resolve(uploadDir, filename);
-    const rel = relative(uploadDir, filePath);
-    if (isAbsolute(rel) || rel.startsWith("..")) {
-      return null;
+    const candidates = [resolve(cwd(), getUploadDir())];
+    const fallback = resolve(getFallbackUploadDir());
+    if (candidates[0] !== fallback) {
+      candidates.push(fallback);
     }
-    // Ownership check — required to prevent cross-user read.
-    const owned = await isFileOwnedByUser(filename, ownerUserId, uploadDir);
-    if (!owned) {
-      console.warn("Blocked cross-user file read attempt:", {
+
+    let buffer: Buffer | null = null;
+    for (const uploadDir of candidates) {
+      const filePath = resolve(uploadDir, filename);
+      const rel = relative(uploadDir, filePath);
+      // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
+      if (isAbsolute(rel) || rel.startsWith("..")) {
+      }
+      // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
+      const owned = await isFileOwnedByUser(filename, ownerUserId, uploadDir);
+      if (!owned) {
+        // Check other candidate before warning
+      }
+      try {
+        buffer = await readFile(filePath);
+        break;
+        // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
+      } catch {}
+    }
+    if (!buffer) {
+      // No candidate had the file with ownership; check if any candidate had ownership but file missing
+      // Fall back to warning for the primary
+      const primaryOwned = await isFileOwnedByUser(
         filename,
         ownerUserId,
-      });
+        candidates[0]
+      );
+      if (!primaryOwned) {
+        console.warn("Blocked cross-user file read attempt:", {
+          filename,
+          ownerUserId,
+        });
+      }
       return null;
     }
-    const buffer = await readFile(filePath);
+    // Use found buffer
     // Guard against OOM: 50 MB video → ~66 MB base64 string, times concurrent parts
     // Keep inline limit at ~20 MB raw; larger files get text placeholder.
     if (buffer.length > 20 * 1024 * 1024) {

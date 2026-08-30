@@ -7,10 +7,7 @@ import { isBlockedMediaType } from "@/lib/attachments";
 import { ChatbotError } from "@/lib/errors";
 import { checkFilesGetRateLimit } from "@/lib/ratelimit";
 import { getClientIp } from "@/lib/server/request-utils";
-
-function getUploadDir(): string {
-  return process.env.UPLOAD_DIR ?? "./uploads";
-}
+import { getFallbackUploadDir, getUploadDir } from "@/lib/server/upload-dir";
 
 // Only safe types are served with their native Content-Type.
 // Dangerous types (html/js/xml/svg) are forced to a safe type and served as attachment.
@@ -85,32 +82,40 @@ export async function GET(
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  const uploadDir = resolve(process.cwd(), getUploadDir());
-  const filePath = resolve(uploadDir, safeName);
-
-  // Prevent path traversal: filePath must stay inside uploadDir (hardened via relative)
-  const rel = relative(uploadDir, filePath);
-  if (isAbsolute(rel) || rel.startsWith("..")) {
-    return NextResponse.json({ error: "File not found" }, { status: 404 });
+  // Try primary upload dir, then /tmp fallback (Docker volume EACCES, Vercel EROFS)
+  const candidates = [resolve(process.cwd(), getUploadDir())];
+  const fallback = resolve(getFallbackUploadDir());
+  if (candidates[0] !== fallback) {
+    candidates.push(fallback);
   }
 
-  // Ownership check via sidecar metadata
-  const metaPath = join(uploadDir, ".meta", `${safeName}.json`);
+  // Ownership check via sidecar metadata - try both dirs
   let isOwner = false;
   let storedContentType: string | undefined;
-  try {
-    const metaRaw = await readFile(metaPath, "utf8");
-    const meta = JSON.parse(metaRaw) as {
-      userId?: string;
-      contentType?: string;
-    };
-    storedContentType = meta.contentType;
-    if (meta.userId && meta.userId === session.user.id) {
-      isOwner = true;
-    } else {
-      return NextResponse.json({ error: "File not found" }, { status: 404 });
+  let foundMetaDir: string | null = null;
+  for (const dir of candidates) {
+    const metaPath = join(dir, ".meta", `${safeName}.json`);
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
+      const metaRaw = await readFile(metaPath, "utf8");
+      const meta = JSON.parse(metaRaw) as {
+        userId?: string;
+        contentType?: string;
+      };
+      storedContentType = meta.contentType;
+      if (meta.userId && meta.userId === session.user.id) {
+        isOwner = true;
+        foundMetaDir = dir;
+      } else {
+        return NextResponse.json({ error: "File not found" }, { status: 404 });
+      }
+      break;
+    } catch {
+      /* ignore */
     }
-  } catch {
+  }
+
+  if (!isOwner) {
     // No metadata -> fall back to message-ownership check for legacy files
     try {
       const { getAllMessagesByUserId } = await import("@/lib/db/queries");
@@ -150,8 +155,32 @@ export async function GET(
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
+  // Try to read the file from the metadata dir first, then the other candidate
+  let data: Buffer | null = null;
+  const readCandidates = foundMetaDir
+    ? [foundMetaDir, ...candidates.filter((d) => d !== foundMetaDir)]
+    : candidates;
+
+  for (const dir of readCandidates) {
+    const candidatePath = resolve(dir, safeName);
+    const rel = relative(dir, candidatePath);
+    if (isAbsolute(rel) || rel.startsWith("..")) {
+      continue;
+    }
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
+      data = await readFile(candidatePath);
+      break;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (!data) {
+    return NextResponse.json({ error: "File not found" }, { status: 404 });
+  }
+
   try {
-    const data = await readFile(filePath);
     const ext = safeName.split(".").pop()?.toLowerCase() ?? "";
     const isDangerous =
       DANGEROUS_EXTS.has(ext) || isBlockedMediaType(storedContentType);
