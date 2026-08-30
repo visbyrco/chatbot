@@ -11,9 +11,15 @@ import type { ChatMessage } from "@/lib/types";
 
 export const IMAGE_MEDIA_TYPES = [
   "image/jpeg",
+  "image/jpg",
   "image/png",
   "image/webp",
   "image/gif",
+  "image/heic",
+  "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
+  "image/avif",
 ] as const;
 
 export const PDF_MEDIA_TYPE = "application/pdf" as const;

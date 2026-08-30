@@ -17,9 +17,12 @@ function getUploadDir(): string {
 const CONTENT_TYPES: Record<string, string> = {
   aac: "audio/aac",
   avi: "video/x-msvideo",
+  avif: "image/avif",
   csv: "text/csv",
   flac: "audio/flac",
   gif: "image/gif",
+  heic: "image/heic",
+  heif: "image/heif",
   jpeg: "image/jpeg",
   jpg: "image/jpeg",
   json: "application/json",

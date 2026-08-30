@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, join, resolve } from "node:path";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -24,6 +24,9 @@ function getUploadDir(): string {
 const ALLOWED_FILE_EXTS = new Set([
   ".csv",
   ".gif",
+  ".heic",
+  ".heif",
+  ".avif",
   ".jpeg",
   ".jpg",
   ".json",
@@ -121,7 +124,7 @@ export async function POST(request: Request) {
     const fileBuffer = Buffer.from(await file.arrayBuffer());
 
     try {
-      const uploadDir = join(process.cwd(), getUploadDir());
+      const uploadDir = resolve(process.cwd(), getUploadDir());
       await mkdir(uploadDir, { recursive: true });
       const filePath = join(uploadDir, safeName);
       await writeFile(filePath, fileBuffer);
