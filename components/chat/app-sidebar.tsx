@@ -1,18 +1,12 @@
 "use client";
 
-import { PenSquareIcon, TrashIcon } from "lucide-react";
+import { PenSquareIcon, SearchIcon, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import { toast } from "sonner";
-import { useSWRConfig } from "swr";
-import { unstable_serialize } from "swr/infinite";
 import type { User } from "@/app/(auth)/auth";
 import { ChatMonoLogo } from "@/components/chat/chat-logo";
-import {
-  getChatHistoryPaginationKey,
-  SidebarHistory,
-} from "@/components/chat/sidebar-history";
+import { SidebarHistory } from "@/components/chat/sidebar-history";
 import { SidebarUserNav } from "@/components/chat/sidebar-user-nav";
 import {
   Sidebar,
@@ -21,6 +15,7 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
+  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -28,16 +23,6 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 
 function CollapsedSidebarToggle() {
@@ -65,8 +50,7 @@ export function AppSidebar({
 }) {
   const router = useRouter();
   const { setOpenMobile } = useSidebar();
-  const { mutate } = useSWRConfig();
-  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const closeMobile = useCallback(() => {
     setOpenMobile(false);
@@ -77,111 +61,92 @@ export function AppSidebar({
     router.push("/");
   }, [router, setOpenMobile]);
 
-  const handleShowDeleteAllDialog = useCallback(() => {
-    setShowDeleteAllDialog(true);
+  const handleSearchChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      setSearchQuery(event.target.value);
+    },
+    []
+  );
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery("");
   }, []);
 
-  const handleDeleteAll = useCallback(() => {
-    setShowDeleteAllDialog(false);
-    router.replace("/");
-    mutate(unstable_serialize(getChatHistoryPaginationKey), [], {
-      revalidate: false,
-    });
-
-    fetch(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/history`, {
-      method: "DELETE",
-    });
-
-    toast.success("All chats deleted");
-  }, [mutate, router]);
-
   return (
-    <>
-      <Sidebar collapsible="icon">
-        <SidebarHeader className="pb-0 pt-3">
-          <SidebarMenu>
-            <SidebarMenuItem className="flex flex-row items-center justify-between">
-              <div className="group-data-[collapsible=icon]:hidden">
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="pb-0 pt-3">
+        <SidebarMenu>
+          <SidebarMenuItem className="flex flex-row items-center justify-between">
+            <div className="group-data-[collapsible=icon]:hidden">
+              <SidebarMenuButton
+                asChild
+                className="size-8 !px-0 items-center justify-center"
+                tooltip="Chatbot"
+              >
+                <Link href="/" onClick={closeMobile}>
+                  <ChatMonoLogo className="size-5 shrink-0" size={20} />
+                </Link>
+              </SidebarMenuButton>
+            </div>
+            <div className="hidden size-8 items-center justify-center group-data-[collapsible=icon]:flex">
+              <CollapsedSidebarToggle />
+            </div>
+            <div className="group-data-[collapsible=icon]:hidden">
+              <SidebarTrigger className="text-sidebar-foreground/70 transition-colors duration-150 hover:text-sidebar-foreground" />
+            </div>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup className="pt-1">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
                 <SidebarMenuButton
-                  asChild
-                  className="size-8 !px-0 items-center justify-center"
-                  tooltip="Chatbot"
+                  className="h-9 rounded-lg border border-input bg-foreground/5 text-[14px] text-sidebar-foreground/80 transition-colors duration-150 hover:bg-primary/10 hover:border-primary/30 hover:text-sidebar-foreground"
+                  onClick={handleNewChat}
+                  tooltip="New Chat"
                 >
-                  <Link href="/" onClick={closeMobile}>
-                    <ChatMonoLogo className="size-5 shrink-0" size={20} />
-                  </Link>
+                  <PenSquareIcon className="size-4" />
+                  <span className="font-medium">New chat</span>
                 </SidebarMenuButton>
-              </div>
-              <div className="hidden size-8 items-center justify-center group-data-[collapsible=icon]:flex">
-                <CollapsedSidebarToggle />
-              </div>
-              <div className="group-data-[collapsible=icon]:hidden">
-                <SidebarTrigger className="text-sidebar-foreground/70 transition-colors duration-150 hover:text-sidebar-foreground" />
-              </div>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup className="pt-1">
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    className="h-9 rounded-lg border border-input bg-foreground/5 text-[14px] text-sidebar-foreground/80 transition-colors duration-150 hover:bg-primary/10 hover:border-primary/30 hover:text-sidebar-foreground"
-                    onClick={handleNewChat}
-                    tooltip="New Chat"
-                  >
-                    <PenSquareIcon className="size-4" />
-                    <span className="font-medium">New chat</span>
-                  </SidebarMenuButton>
+              </SidebarMenuItem>
+              {user ? (
+                <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+                  <div className="relative w-full">
+                    <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-sidebar-foreground/40" />
+                    <SidebarInput
+                      aria-label="Search chats"
+                      className="h-8 rounded-lg bg-foreground/[0.04] pr-8 pl-8 text-[13px] placeholder:text-sidebar-foreground/40 focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+                      data-testid="thread-search-input"
+                      onChange={handleSearchChange}
+                      placeholder="Search chats..."
+                      value={searchQuery}
+                    />
+                    {searchQuery ? (
+                      <button
+                        aria-label="Clear search"
+                        className="absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-sidebar-foreground/40 transition-colors hover:bg-foreground/10 hover:text-sidebar-foreground"
+                        onClick={handleClearSearch}
+                        type="button"
+                      >
+                        <XIcon className="size-3.5" />
+                      </button>
+                    ) : null}
+                  </div>
                 </SidebarMenuItem>
-                {user ? (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      className="rounded-lg text-sidebar-foreground/60 transition-colors duration-150 hover:bg-error/10 hover:text-error"
-                      onClick={handleShowDeleteAllDialog}
-                      tooltip="Delete All Chats"
-                    >
-                      <TrashIcon className="size-4" />
-                      <span className="text-[14px]">Delete all</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ) : null}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <SidebarHistory user={user} />
-        </SidebarContent>
-        <SidebarFooter className="border-t border-sidebar-border pt-2 pb-3">
-          {user ? (
-            <SidebarUserNav testEnvironment={testEnvironment} user={user} />
-          ) : null}
-        </SidebarFooter>
-        <SidebarRail />
-      </Sidebar>
-
-      <AlertDialog
-        onOpenChange={setShowDeleteAllDialog}
-        open={showDeleteAllDialog}
-      >
-        <AlertDialogContent className="glass-surface rounded-lg border-border">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="font-sora text-lg font-semibold">
-              Delete all chats?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete all
-              your chats and remove them from our servers.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteAll}>
-              Delete All
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+              ) : null}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarHistory searchQuery={searchQuery} user={user} />
+      </SidebarContent>
+      <SidebarFooter className="border-t border-sidebar-border pt-2 pb-3">
+        {user ? (
+          <SidebarUserNav testEnvironment={testEnvironment} user={user} />
+        ) : null}
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   );
 }

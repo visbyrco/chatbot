@@ -101,7 +101,13 @@ export function getChatHistoryPaginationKey(
   return `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/history?ending_before=${firstChatFromPage.id}&limit=${PAGE_SIZE}`;
 }
 
-export function SidebarHistory({ user }: { user: User | undefined }) {
+export function SidebarHistory({
+  searchQuery = "",
+  user,
+}: {
+  searchQuery?: string;
+  user: User | undefined;
+}) {
   const { setOpenMobile } = useSidebar();
   const pathname = usePathname();
   const id = pathname?.startsWith("/chat/") ? pathname.split("/")[2] : null;
@@ -186,17 +192,30 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     paginatedChatHistories.length > 0 &&
     paginatedChatHistories.every((page) => page.chats.length === 0);
 
-  const groupedChats = useMemo(() => {
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedSearch.length > 0;
+
+  const filteredChats = useMemo(() => {
     if (!paginatedChatHistories) {
       return null;
     }
-
-    return groupChatsByDate(
-      paginatedChatHistories.flatMap(
-        (paginatedChatHistory) => paginatedChatHistory.chats
-      )
+    const allChats = paginatedChatHistories.flatMap(
+      (paginatedChatHistory) => paginatedChatHistory.chats
     );
-  }, [paginatedChatHistories]);
+    if (!isSearching) {
+      return allChats;
+    }
+    return allChats.filter((chat) =>
+      chat.title.toLowerCase().includes(normalizedSearch)
+    );
+  }, [isSearching, normalizedSearch, paginatedChatHistories]);
+
+  const groupedChats = useMemo(() => {
+    if (!filteredChats) {
+      return null;
+    }
+    return groupChatsByDate(filteredChats);
+  }, [filteredChats]);
 
   const handleDelete = useCallback(() => {
     const chatToDelete = deleteId;
@@ -335,6 +354,26 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
             >
               Start new chat
             </Button>
+          </div>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
+
+  if (isSearching && filteredChats && filteredChats.length === 0) {
+    return (
+      <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+        <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/70">
+          History
+        </SidebarGroupLabel>
+        <SidebarGroupContent>
+          <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+            <p className="text-[13px] font-medium text-sidebar-foreground/80">
+              No results
+            </p>
+            <p className="text-[12px] leading-5 text-sidebar-foreground/50">
+              No chats found for &quot;{searchQuery.trim()}&quot;.
+            </p>
           </div>
         </SidebarGroupContent>
       </SidebarGroup>
