@@ -10,7 +10,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "../ui/sidebar";
-import { CodeIcon, FileIcon, MoreHorizontalIcon, PaperclipIcon } from "./icons";
+import { CodeIcon, FileIcon, InfoIcon, PaperclipIcon } from "./icons";
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const fetcher = async (url: string) => {
@@ -92,11 +92,13 @@ export function ConversationInfoDrawer({
                 </span>
               </div>
               <p className="mt-2 text-2xl font-semibold tabular-nums">
-                {isLoading
-                  ? "Loading..."
-                  : data?.total === null
-                    ? "Unavailable"
-                    : formatCost(data?.total)}
+                {isLoading ? (
+                  <span className="block h-8 w-24 animate-pulse rounded bg-foreground/10" />
+                ) : data?.total === null ? (
+                  "Unavailable"
+                ) : (
+                  formatCost(data?.total)
+                )}
               </p>
               {data?.unavailableMessages ? (
                 <p className="mt-2 text-xs text-muted-foreground">
@@ -209,8 +211,9 @@ export function ConversationInfoDrawer({
           aria-label="Conversation information"
           className="relative flex size-9 items-center justify-center rounded-xl border border-border bg-surface-container-lowest text-foreground shadow-[var(--shadow-float)] transition-colors hover:bg-primary/10 hover:text-primary active:bg-primary/15"
           data-testid="conversation-info-trigger"
+          title="Conversation information"
         >
-          <MoreHorizontalIcon />
+          <InfoIcon />
           <span className="sr-only">Conversation information</span>
         </SidebarTrigger>
       </div>

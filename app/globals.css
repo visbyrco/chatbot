@@ -194,10 +194,10 @@
   --card-foreground: #e0e3e5;
   --popover: rgba(29, 32, 34, 0.88);
   --popover-foreground: #e0e3e5;
-  --primary: #00f0ff;
-  --primary-foreground: #00363a;
-  --secondary: #7000ff;
-  --secondary-foreground: #ddcdff;
+  --primary: #4cc3cb;
+  --primary-foreground: #04292d;
+  --secondary: #8a7cf0;
+  --secondary-foreground: #1e1b3a;
   --muted: rgba(255, 255, 255, 0.06);
   --muted-foreground: #b9cacb;
   --accent: rgba(255, 255, 255, 0.08);
@@ -205,20 +205,20 @@
   --destructive: #ffb4ab;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.06);
-  --ring: #00f0ff;
-  --chart-1: #00f0ff;
-  --chart-2: #7000ff;
+  --ring: #4cc3cb;
+  --chart-1: #4cc3cb;
+  --chart-2: #8a7cf0;
   --chart-3: #d1bcff;
   --chart-4: #ffb4ab;
   --chart-5: #dbfcff;
   --sidebar: rgba(16, 20, 21, 0.72);
   --sidebar-foreground: #e0e3e5;
-  --sidebar-primary: #00f0ff;
-  --sidebar-primary-foreground: #00363a;
+  --sidebar-primary: #4cc3cb;
+  --sidebar-primary-foreground: #04292d;
   --sidebar-accent: rgba(255, 255, 255, 0.06);
   --sidebar-accent-foreground: #e0e3e5;
   --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #00f0ff;
+  --sidebar-ring: #4cc3cb;
 
   --surface: #101415;
   --surface-dim: #101415;
@@ -234,10 +234,10 @@
   --inverse-on-surface: #2d3133;
   --outline: #849495;
   --outline-variant: #3b494b;
-  --surface-tint: #00dbe9;
+  --surface-tint: #4cc3cb;
   --surface-variant: #323537;
-  --primary-fixed: #7df4ff;
-  --primary-fixed-dim: #00dbe9;
+  --primary-fixed: #a8e6ea;
+  --primary-fixed-dim: #4cc3cb;
   --on-primary-fixed: #002022;
   --on-primary-fixed-variant: #004f54;
   --secondary-fixed: #e9ddff;
@@ -268,7 +268,7 @@
   --shadow-composer-focus:
     0 0 0 1px rgb(255 255 255 / 0.1), 0 4px 16px -4px rgb(0 0 0 / 0.3),
     inset 0 1px 0 rgb(255 255 255 / 0.04);
-  --shadow-glow: 0 0 24px rgb(0 240 255 / 0.35);
+  --shadow-glow: 0 0 18px rgb(76 195 203 / 0.16);
   color-scheme: dark;
 }
 
@@ -346,11 +346,9 @@
   }
 }
 
-*:focus,
-*:focus-visible {
-  outline: none !important;
-  outline-offset: 0 !important;
-  box-shadow: none !important;
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 @utility text-balance {
@@ -550,17 +548,17 @@
   }
 
   .glow-primary {
-    box-shadow: 0 0 16px
-      color-mix(in srgb, var(--surface-tint) 25%, transparent);
+    box-shadow: 0 0 12px
+      color-mix(in srgb, var(--surface-tint) 14%, transparent);
   }
 
   .glow-primary-strong {
-    box-shadow: 0 0 24px
-      color-mix(in srgb, var(--surface-tint) 40%, transparent);
+    box-shadow: 0 0 16px
+      color-mix(in srgb, var(--surface-tint) 22%, transparent);
   }
 
   .glow-secondary {
-    box-shadow: 0 0 16px rgba(112, 0, 255, 0.25);
+    box-shadow: 0 0 12px rgba(138, 124, 240, 0.18);
   }
 }
 
@@ -573,17 +571,17 @@
     background:
       radial-gradient(
         ellipse 80% 50% at 20% 40%,
-        rgba(0, 240, 255, 0.07),
+        rgba(76, 195, 203, 0.06),
         transparent 75%
       ),
       radial-gradient(
         ellipse 60% 40% at 80% 60%,
-        rgba(112, 0, 255, 0.06),
+        rgba(138, 124, 240, 0.05),
         transparent 70%
       ),
       radial-gradient(
         ellipse 50% 30% at 50% 100%,
-        rgba(0, 219, 233, 0.04),
+        rgba(76, 195, 203, 0.035),
         transparent 65%
       );
   }
@@ -934,7 +932,7 @@
   .cm-selectionBackground,
 .dark .ˉo.cm-selectionBackground,
 .dark .ˉo.cm-content::selection {
-  background: rgba(0, 240, 255, 0.25) !important;
+  background: rgba(76, 195, 203, 0.25) !important;
 }
 
 .cm-activeLine {

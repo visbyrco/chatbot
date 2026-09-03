@@ -43,13 +43,13 @@ function PureSuggestedActions({ chatId, sendMessage }: SuggestedActionsProps) {
           initial={{ opacity: 0, y: 16 }}
           key={suggestedAction}
           transition={{
-            delay: 0.06 * index,
-            duration: 0.4,
+            delay: 0.03 * index,
+            duration: 0.25,
             ease: [0.22, 1, 0.36, 1],
           }}
         >
           <Suggestion
-            className="h-auto w-full rounded-lg border border-border/60 bg-card px-4 py-3.5 text-left text-[14px] font-[450] leading-relaxed text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-accent hover:text-foreground sm:rounded-lg sm:text-center"
+            className="h-auto w-full rounded-lg border border-border/60 bg-card px-4 py-3.5 text-left text-[14px] font-[450] leading-relaxed text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-accent hover:text-foreground"
             onClick={handleSuggestionClick}
             suggestion={suggestedAction}
           >

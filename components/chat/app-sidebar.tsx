@@ -103,7 +103,7 @@ export function AppSidebar({
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  className="h-9 rounded-lg border border-input bg-foreground/5 text-[14px] text-sidebar-foreground/80 transition-colors duration-150 hover:bg-primary/10 hover:border-primary/30 hover:text-sidebar-foreground"
+                  className="h-9 rounded-lg bg-primary text-[14px] text-primary-foreground transition-all duration-150 hover:brightness-110 active:scale-[0.99]"
                   onClick={handleNewChat}
                   tooltip="New Chat"
                 >

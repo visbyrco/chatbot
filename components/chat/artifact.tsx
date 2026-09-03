@@ -337,7 +337,10 @@ function PureArtifact({
         <div className="flex items-center gap-3">
           <ArtifactCloseButton />
           <div className="flex flex-col gap-0.5">
-            <div className="text-sm font-semibold leading-tight tracking-tight">
+            <div
+              className="truncate text-sm font-semibold leading-tight tracking-tight"
+              title={artifact.title}
+            >
               {artifact.title}
             </div>
             <div className="flex items-center gap-2">
@@ -361,7 +364,10 @@ function PureArtifact({
                 <div className="h-3 w-24 animate-pulse rounded bg-foreground/10" />
               )}
               {documents && documents.length > 1 && (
-                <div className="rounded-xl bg-foreground/5 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                <div
+                  className="rounded-lg bg-foreground/5 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-foreground/80"
+                  title={`Version ${currentVersionIndex + 1} of ${documents.length}`}
+                >
                   v{currentVersionIndex + 1}/{documents.length}
                 </div>
               )}
@@ -450,13 +456,20 @@ function PureArtifact({
         transition={{ damping: 30, stiffness: 300, type: "spring" }}
       >
         {artifactPanel}
+        <button
+          className="shrink-0 border-t border-border bg-sidebar px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-sm font-semibold text-primary"
+          onClick={handleClose}
+          type="button"
+        >
+          Done
+        </button>
       </motion.div>
     );
   }
 
   return (
     <div
-      className="flex h-dvh w-[60%] shrink-0 flex-col overflow-hidden border-l border-border bg-sidebar transition-[width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+      className="flex h-dvh w-1/2 shrink-0 flex-col overflow-hidden border-l border-border bg-sidebar transition-[width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
       data-testid="artifact"
     >
       {artifactPanel}

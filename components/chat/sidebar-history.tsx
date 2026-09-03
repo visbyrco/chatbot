@@ -314,11 +314,10 @@ export function SidebarHistory({
         </SidebarGroupLabel>
         <SidebarGroupContent>
           <div className="flex flex-col gap-1.5 px-1">
-            {[44, 32, 28, 64, 52].map((item) => (
+            {[0, 1, 2, 3, 4].map((item) => (
               <Skeleton
-                className="h-8 rounded-lg"
+                className="h-8 w-full rounded-lg"
                 key={item}
-                style={{ width: `${item}%` } as React.CSSProperties}
               />
             ))}
           </div>
@@ -429,7 +428,7 @@ export function SidebarHistory({
                 {groupedChats.lastWeek.length > 0 && (
                   <div>
                     <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-primary">
-                      Last 7 days
+                      Previous 7 days
                     </div>
                     {groupedChats.lastWeek.map((chat, index) => (
                       <ChatItem
@@ -447,7 +446,7 @@ export function SidebarHistory({
                 {groupedChats.lastMonth.length > 0 && (
                   <div>
                     <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-primary">
-                      Last 30 days
+                      Previous 30 days
                     </div>
                     {groupedChats.lastMonth.map((chat, index) => (
                       <ChatItem
