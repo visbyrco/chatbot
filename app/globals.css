@@ -351,6 +351,12 @@
   outline-offset: 2px;
 }
 
+[data-slot="input-group-control"]:focus,
+[data-slot="input-group-control"]:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
 @utility text-balance {
   text-wrap: balance;
 }
