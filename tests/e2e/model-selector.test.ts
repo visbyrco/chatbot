@@ -116,7 +116,7 @@ test.describe("Model Selector", () => {
     await expect(page.getByPlaceholder("Search models...")).toBeVisible();
     await expect(page.getByTestId("reasoning-effort-picker")).toBeVisible();
     await expect(modelButton).toContainText("DeepSeek V3.2");
-    await expect(kimiOption).toContainText("Confirm");
+    await expect(kimiOption).toContainText("Tap to confirm");
   });
 
   test("confirms the default reasoning level by clicking the model again", async ({
