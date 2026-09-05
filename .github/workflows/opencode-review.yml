@@ -67,7 +67,7 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
-          model: opencode-go/muse-spark-1.2-contributor
+          model: opencode-go/muse-spark-1.3-contributor
           # trigger phrases for this workflow - keeps it separate from the default /oc handler
           mentions: "/review,/oc review,/opencode review"
           # plan agent is read-only, best for reviews (no file edits expected)
