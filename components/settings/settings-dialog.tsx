@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Download,
   Keyboard,
@@ -220,7 +220,7 @@ export function SettingsDialog({
               </DialogClose>
             </header>
 
-            <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border glass-surface px-3 py-2 no-scrollbar md:hidden">
+            <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border glass-surface px-3 py-2 no-scrollbar [mask-image:linear-gradient(to_right,black_88%,transparent)] md:hidden">
               {NAV_ITEMS.map((item, index) => (
                 <MobileSettingsNavButton
                   active={item.id === activeSection}
@@ -239,28 +239,14 @@ export function SettingsDialog({
               ref={contentScrollRef}
             >
               <div className="mx-auto w-full max-w-3xl px-5 py-6 md:px-8 md:py-8">
-                <AnimatePresence initial={false} mode="wait">
-                  <motion.div
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex flex-col gap-6"
-                    exit={{ opacity: 0, y: -10 }}
-                    initial={{ opacity: 0, y: 14 }}
-                    key={activeSection}
-                    transition={{
-                      duration: 0.24,
-                      ease: [0.22, 1, 0.36, 1],
-                    }}
-                  >
-                    {activeSection === "preferences" ? (
-                      <PreferencesPanel />
-                    ) : null}
-                    {activeSection === "ai-context" ? <AiContextPanel /> : null}
-                    {activeSection === "data" ? <DataPanel /> : null}
-                    {activeSection === "providers" ? <ProvidersPanel /> : null}
-                    {activeSection === "tools" ? <ToolsPanel /> : null}
-                    {activeSection === "legal" ? <LegalPanel /> : null}
-                  </motion.div>
-                </AnimatePresence>
+                <div className="fade-up flex flex-col gap-6" key={activeSection}>
+                  {activeSection === "preferences" ? <PreferencesPanel /> : null}
+                  {activeSection === "ai-context" ? <AiContextPanel /> : null}
+                  {activeSection === "data" ? <DataPanel /> : null}
+                  {activeSection === "providers" ? <ProvidersPanel /> : null}
+                  {activeSection === "tools" ? <ToolsPanel /> : null}
+                  {activeSection === "legal" ? <LegalPanel /> : null}
+                </div>
               </div>
             </div>
           </main>
@@ -620,6 +606,14 @@ function ProvidersPanel() {
               models
             </p>
           </div>
+          <Button
+            onClick={handleOpenAddProvider}
+            size="sm"
+            variant="outline"
+          >
+            <Plus className="mr-1.5 size-3.5" />
+            Add your first provider
+          </Button>
         </div>
       )}
 

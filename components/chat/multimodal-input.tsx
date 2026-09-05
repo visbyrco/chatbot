@@ -536,7 +536,7 @@ function PureMultimodalInput({
   return (
     <div
       className={cn("relative flex w-full flex-col gap-4 fade-up", className)}
-      style={{ animationDelay: "250ms" }}
+      style={{ animationDelay: "100ms" }}
     >
       {editingMessage && onCancelEdit ? (
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground font-manrope">
@@ -585,7 +585,7 @@ function PureMultimodalInput({
       </div>
 
       <PromptInput
-        className="[&>div]:rounded-xl [&>div]:border [&>div]:border-input [&>div]:bg-card [&>div]:shadow-[var(--shadow-composer)] [&>div]:transition-all [&>div]:duration-300 dark:[&>div]:border-white/10 dark:[&>div]:bg-white/[0.07] dark:[&>div]:focus-within:border-primary/30 dark:[&>div]:focus-within:bg-white/[0.09] [&_[data-slot='input-group-addon'][data-align='block-end']]:!border-t-0 [&_[data-slot='input-group-addon'][data-align='block-end']]:border-t-0"
+        className="[&>div]:rounded-xl [&>div]:border [&>div]:border-input [&>div]:bg-card [&>div]:shadow-[var(--shadow-composer)] [&>div]:transition-all [&>div]:duration-300 dark:[&>div]:border-white/10 dark:[&>div]:bg-white/[0.07] dark:[&>div]:focus-within:border-primary/30 dark:[&>div]:focus-within:bg-white/[0.09]"
         onSubmit={handlePromptSubmit}
       >
         {(attachments.length > 0 || uploadQueue.length > 0) && (
@@ -616,7 +616,7 @@ function PureMultimodalInput({
           </div>
         )}
         <PromptInputTextarea
-          className="min-h-24 text-[14px] leading-relaxed px-4 pt-3.5 pb-1.5 placeholder:text-muted-foreground/55"
+          className="min-h-14 text-[14px] leading-relaxed px-4 pt-3.5 pb-1.5 placeholder:text-muted-foreground/55"
           data-testid="multimodal-input"
           onChange={handleInput}
           onKeyDown={handleTextareaKeyDown}
@@ -626,14 +626,14 @@ function PureMultimodalInput({
           ref={textareaRef}
           value={input}
         />
-        <PromptInputFooter className="border-t-0 !border-t-0 px-3 pb-3">
+        <PromptInputFooter className="border-t-0 px-3 pb-3">
           <PromptInputTools>
             <PlusMenu
               fileInputRef={fileInputRef}
               selectedModelId={selectedModelId}
               status={status}
             />
-            <div className="hidden min-w-0 items-center gap-1 md:flex">
+            <div className="flex min-w-0 items-center gap-1">
               <AttachmentsButton
                 fileInputRef={fileInputRef}
                 selectedModelId={selectedModelId}
@@ -659,7 +659,7 @@ function PureMultimodalInput({
                   "h-7 w-7 shrink-0 rounded-lg transition-all duration-200",
                   input.trim() && !shouldBlockOnInvalidModel
                     ? "bg-foreground text-background hover:opacity-85 active:scale-95"
-                    : "bg-foreground/5 text-muted-foreground/25 cursor-not-allowed"
+                    : "bg-foreground/10 text-muted-foreground/60 cursor-not-allowed"
                 )}
                 data-testid="send-button"
                 disabled={
@@ -902,7 +902,7 @@ function ModelSelectorOption({
       </ModelSelectorName>
       {isPending ? (
         <span className="ml-auto rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-primary">
-          Confirm
+          Tap to confirm
         </span>
       ) : (
         <div className="ml-auto flex items-center gap-2 text-foreground/70">

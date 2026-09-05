@@ -377,7 +377,7 @@ const PurePreviewMessage = ({
       return (
         <MessageContent
           className={cn("text-[14px] leading-6", {
-            "w-fit max-w-[min(78%,56ch)] overflow-hidden break-words rounded-2xl rounded-br-lg border border-transparent bg-primary px-4 py-2.5 text-primary-foreground shadow-sm":
+            "w-fit max-w-[min(78%,56ch)] overflow-hidden break-words rounded-xl rounded-br-md border border-transparent bg-primary px-4 py-2.5 text-primary-foreground shadow-sm":
               message.role === "user",
           })}
           data-testid="message-content"
@@ -396,7 +396,7 @@ const PurePreviewMessage = ({
         (state === "approval-responded" &&
           (part as { approval?: { approved?: boolean } }).approval?.approved ===
             false);
-      const widthClass = "w-[min(100%,450px)]";
+      const widthClass = "w-full max-w-[min(100%,36rem)]";
 
       if (state === "output-available") {
         return (
@@ -525,7 +525,7 @@ const PurePreviewMessage = ({
         (state === "approval-responded" &&
           (part as { approval?: { approved?: boolean } }).approval?.approved ===
             false);
-      const widthClass = "w-[min(100%,450px)]";
+      const widthClass = "w-full max-w-[min(100%,36rem)]";
 
       if (state === "output-available") {
         return (
@@ -628,7 +628,7 @@ const PurePreviewMessage = ({
         (state === "approval-responded" &&
           (part as { approval?: { approved?: boolean } }).approval?.approved ===
             false);
-      const widthClass = "w-[min(100%,450px)]";
+      const widthClass = "w-full max-w-[min(100%,36rem)]";
 
       if (state === "output-available") {
         return (
@@ -698,7 +698,7 @@ const PurePreviewMessage = ({
 
     if (type === "tool-runPython") {
       const { toolCallId, state } = part;
-      const widthClass = "w-[min(100%,450px)]";
+      const widthClass = "w-full max-w-[min(100%,36rem)]";
 
       if (state === "output-available") {
         const { output } = part;
@@ -803,7 +803,7 @@ const PurePreviewMessage = ({
       >
         {isAssistant && (
           <div className="flex h-[calc(14px*1.5)] shrink-0 items-center">
-            <div className="flex size-7 items-center justify-center rounded-lg border bg-foreground/5 text-primary ring-1 ring-primary/20">
+            <div className="flex size-7 items-center justify-center rounded-lg border bg-foreground/5 text-primary">
               <SparklesIcon size={13} />
             </div>
           </div>

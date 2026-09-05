@@ -21,7 +21,7 @@ export function MobileTopBar() {
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between p-3 md:hidden">
-      <div className="pointer-events-auto flex items-center overflow-hidden rounded-xl border border-border bg-surface-container-lowest shadow-[var(--shadow-float)]">
+      <div className="pointer-events-auto flex items-center overflow-hidden rounded-xl border border-border bg-surface-container-lowest/90 shadow-[var(--shadow-float)] backdrop-blur-xl">
         <button
           aria-label="Toggle Sidebar"
           className="flex size-9 items-center justify-center rounded-l-xl bg-transparent text-foreground transition-colors hover:bg-primary/10 hover:text-primary active:bg-primary/15"

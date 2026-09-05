@@ -79,7 +79,7 @@ test.describe("Title Model Selector", () => {
     await kimiOption.click();
 
     await expect(page.getByTestId("reasoning-effort-picker")).toBeVisible();
-    await expect(kimiOption).toContainText("Confirm");
+    await expect(kimiOption).toContainText("Tap to confirm");
 
     const mediumEffort = page.getByRole("button", {
       name: "Set reasoning effort to medium",

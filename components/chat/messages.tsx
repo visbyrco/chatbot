@@ -152,11 +152,6 @@ function PureMessages({
 
   return (
     <div className="relative flex-1 bg-transparent">
-      {messages.length === 0 && !isLoading && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <Greeting />
-        </div>
-      )}
       <div
         className={cn(
           "absolute inset-0 touch-pan-y overflow-y-auto",
@@ -165,7 +160,12 @@ function PureMessages({
         ref={messagesContainerRef}
         style={isArtifactVisible ? { scrollbarWidth: "none" } : undefined}
       >
-        <div className="mx-auto flex min-h-full min-w-0 max-w-4xl flex-col gap-6 px-4 pt-16 pb-8 md:gap-7 md:px-6 md:py-10">
+        <div className="mx-auto flex min-h-full min-w-0 max-w-4xl flex-col gap-6 px-4 pt-4 pb-8 md:gap-7 md:px-6 md:pt-10 md:pb-10">
+          {messages.length === 0 && !isLoading && (
+            <div className="flex flex-1 items-center justify-center px-4 py-10">
+              <Greeting />
+            </div>
+          )}
           {shouldVirtualize && topSpacerHeight > 0 ? (
             <div aria-hidden style={{ height: topSpacerHeight }} />
           ) : null}
@@ -214,7 +214,7 @@ function PureMessages({
           y: isAtBottom ? 8 : 0,
         }}
         aria-label="Scroll to bottom"
-        className={`!absolute bottom-4 left-1/2 z-10 flex items-center rounded-lg border border-border bg-surface-container-lowest px-3.5 shadow-[var(--shadow-float)] h-7 text-[10px] ${
+        className={`!absolute bottom-4 left-1/2 z-10 flex items-center gap-1.5 rounded-full border border-border bg-surface-container-lowest px-4 shadow-[var(--shadow-float)] h-8 text-[11px] font-medium text-muted-foreground hover:text-foreground ${
           isAtBottom ? "pointer-events-none" : "pointer-events-auto"
         }`}
         initial={false}
@@ -223,7 +223,8 @@ function PureMessages({
         transition={{ damping: 28, stiffness: 420, type: "spring" }}
         type="button"
       >
-        <ArrowDownIcon className="size-3 text-muted-foreground" />
+        <ArrowDownIcon className="size-3.5 text-muted-foreground" />
+        Latest
       </motion.button>
     </div>
   );

@@ -132,7 +132,7 @@ export function ChatShell() {
           <div
             className={cn(
               "flex min-w-0 flex-col glass-surface-static transition-[width] duration-200 ease-smooth max-md:w-full",
-              isArtifactVisible ? "md:w-[40%] max-md:hidden" : "w-full"
+              isArtifactVisible ? "md:w-1/2 max-md:hidden" : "w-full"
             )}
           >
             <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent md:border-l md:border-border">
