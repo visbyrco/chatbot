@@ -359,7 +359,9 @@ export async function saveMessages({ messages }: { messages: DBMessage[] }) {
     }
 
     await db.transaction(async (tx) => {
-      await tx.insert(message).values(messages);
+      await tx.insert(message).values(messages).onConflictDoNothing({
+        target: message.id,
+      });
 
       const chatIds = [...new Set(messages.map((m) => m.chatId))];
       const touchedAt = new Date();

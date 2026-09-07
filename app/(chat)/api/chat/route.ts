@@ -226,6 +226,7 @@ export async function POST(request: Request) {
         visibility: selectedVisibilityType,
       });
       titlePromise = generateTitleFromUserMessage({
+        chatId: id,
         chatModelId: chatModel,
         message,
         reasoningEffort,
@@ -551,7 +552,7 @@ export async function POST(request: Request) {
             userAiContext,
           }),
           messages: modelMessages,
-          model: await getLanguageModel(chatModel),
+          model: await getLanguageModel(chatModel, { sessionId: id }),
           onAbort() {
             stopWaitingStatus();
             if (redisPoll) {
@@ -716,7 +717,12 @@ export async function POST(request: Request) {
         messages: finishedMessages,
         responseMessage,
       }) => {
+        let persisted = false;
         const persist = async () => {
+          if (persisted) {
+            return;
+          }
+          persisted = true;
           if (isAborted) {
             const abortedMessage = responseMessage ?? finishedMessages.at(-1);
             if (

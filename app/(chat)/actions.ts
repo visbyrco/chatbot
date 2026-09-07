@@ -83,11 +83,13 @@ async function getTitleReasoningEffort(): Promise<ReasoningEffort | undefined> {
 
 export async function generateTitleFromUserMessage({
   message,
+  chatId,
   chatModelId,
   reasoningEffort,
   userId,
 }: {
   message: UIMessage;
+  chatId?: string;
   chatModelId?: string;
   reasoningEffort?: ReasoningEffort;
   userId?: string;
@@ -102,7 +104,10 @@ export async function generateTitleFromUserMessage({
       return "New chat";
     }
 
-    const model = await getLanguageModel(modelId);
+    const model = await getLanguageModel(
+      modelId,
+      chatId ? { sessionId: chatId } : undefined
+    );
     if (!model) {
       return "New chat";
     }

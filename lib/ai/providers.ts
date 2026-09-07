@@ -172,6 +172,30 @@ export function getCustomProviderOptionsKey(
   );
 }
 
+export const OPENCODE_GO_SESSION_HEADER = "x-opencode-session";
+
+// OpenCode Go routes by stable per-conversation session id and requires
+// callers to identify with their own User-Agent.
+// See https://opencode.ai/docs/go/#where-can-i-use-it
+const VISBYR_USER_AGENT = "visbyr-chat/3.1.0";
+
+export function isOpenCodeGoBaseURL(baseURL: string): boolean {
+  return /opencode\.ai\/zen\/go/i.test(baseURL);
+}
+
+export function getOpenCodeGoHeaders(
+  sessionId?: string
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "User-Agent": VISBYR_USER_AGENT,
+  };
+  const session = sessionId?.trim();
+  if (session) {
+    headers[OPENCODE_GO_SESSION_HEADER] = session;
+  }
+  return headers;
+}
+
 function getCustomProviderSdk(
   provider: Pick<CustomProvider, "type" | "providerKey">
 ): "openai" | "openai-compatible" {
@@ -201,8 +225,13 @@ export function isOpenAICompatibleProvider(
 function createModelFromProvider(
   provider: Pick<CustomProvider, "type" | "baseURL" | "providerKey" | "name">,
   apiKey: string,
-  modelName: string
+  modelName: string,
+  sessionId?: string
 ): LanguageModelV4 {
+  const goHeaders = isOpenCodeGoBaseURL(provider.baseURL)
+    ? getOpenCodeGoHeaders(sessionId)
+    : undefined;
+
   if (provider.type === "openai") {
     const sdk = getCustomProviderSdk(provider);
 
@@ -213,12 +242,14 @@ function createModelFromProvider(
       return createOpenAI({
         apiKey,
         baseURL: provider.baseURL,
+        ...(goHeaders ? { headers: goHeaders } : {}),
       }).chat(modelName);
     }
 
     return createOpenAICompatible({
       apiKey,
       baseURL: provider.baseURL,
+      ...(goHeaders ? { headers: goHeaders } : {}),
       name: getCustomProviderOptionsKey(provider),
     })(modelName);
   }
@@ -227,13 +258,18 @@ function createModelFromProvider(
     return createAnthropic({
       apiKey,
       baseURL: provider.baseURL,
+      ...(goHeaders ? { headers: goHeaders } : {}),
     }).languageModel(modelName);
   }
 
   throw new Error(`Unknown custom provider type: ${provider.type}`);
 }
 
-async function resolveCustomProvider(providerId: string, modelName: string) {
+async function resolveCustomProvider(
+  providerId: string,
+  modelName: string,
+  sessionId?: string
+) {
   const cached = providerCache.get(providerId);
   if (cached) {
     return createModelFromProvider(
@@ -244,7 +280,8 @@ async function resolveCustomProvider(providerId: string, modelName: string) {
         type: cached.type,
       },
       cached.apiKey,
-      modelName
+      modelName,
+      sessionId
     );
   }
 
@@ -264,7 +301,7 @@ async function resolveCustomProvider(providerId: string, modelName: string) {
     throw new ChatbotError("bad_request:provider", { cause: error });
   }
 
-  const model = createModelFromProvider(provider, apiKey, modelName);
+  const model = createModelFromProvider(provider, apiKey, modelName, sessionId);
   providerCache.set(providerId, {
     apiKey,
     baseURL: provider.baseURL,
@@ -276,19 +313,22 @@ async function resolveCustomProvider(providerId: string, modelName: string) {
   return model;
 }
 
-function resolveModel(modelId: string) {
+function resolveModel(modelId: string, sessionId?: string) {
   const [providerName, ...rest] = modelId.split("/");
   const modelName = rest.join("/");
 
   if (providerName.startsWith("custom-")) {
     const providerId = providerName.slice(7);
-    return resolveCustomProvider(providerId, modelName);
+    return resolveCustomProvider(providerId, modelName, sessionId);
   }
 
   throw new Error(`Unknown provider: ${providerName}`);
 }
 
-export function getLanguageModel(modelId: string) {
+export function getLanguageModel(
+  modelId: string,
+  opts?: { sessionId?: string }
+) {
   const activeMock = getActiveMockProvider();
   if (activeMock) {
     // The mock provider registers models by bare id (e.g. "chat-model"),
@@ -300,7 +340,7 @@ export function getLanguageModel(modelId: string) {
     return activeMock.languageModel(mockModelId);
   }
 
-  return resolveModel(modelId);
+  return resolveModel(modelId, opts?.sessionId);
 }
 
 export function invalidateProviderCache(providerId: string) {
