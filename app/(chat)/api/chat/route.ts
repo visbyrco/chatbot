@@ -717,12 +717,21 @@ export async function POST(request: Request) {
         messages: finishedMessages,
         responseMessage,
       }) => {
-        let persisted = false;
-        const persist = async () => {
-          if (persisted) {
-            return;
-          }
-          persisted = true;
+        // after() and the await below share one in-flight promise so the
+        // messages are written exactly once. On failure the promise is
+        // cleared so after() still gets a chance to retry.
+        let persistPromise: Promise<void> | null = null;
+        const persist = () => {
+          persistPromise ??= doPersist().then(
+            () => undefined,
+            (error) => {
+              persistPromise = null;
+              throw error;
+            }
+          );
+          return persistPromise;
+        };
+        const doPersist = async () => {
           if (isAborted) {
             const abortedMessage = responseMessage ?? finishedMessages.at(-1);
             if (

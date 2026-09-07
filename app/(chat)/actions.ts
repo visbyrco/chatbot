@@ -271,6 +271,7 @@ export async function regenerateChatTitle({
       : undefined;
 
   const title = await generateTitleFromUserMessage({
+    chatId,
     chatModelId,
     message: uiMessage,
     reasoningEffort,

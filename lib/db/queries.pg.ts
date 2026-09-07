@@ -12,6 +12,7 @@ import {
   lt,
   or,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -359,9 +360,20 @@ export async function saveMessages({ messages }: { messages: DBMessage[] }) {
     }
 
     await db.transaction(async (tx) => {
-      await tx.insert(message).values(messages).onConflictDoNothing({
-        target: message.id,
-      });
+      // Overwrite on id conflict, matching the in-memory store's Map.set
+      // semantics so retries with updated parts/metadata cannot leave a
+      // stale row behind.
+      await tx
+        .insert(message)
+        .values(messages)
+        .onConflictDoUpdate({
+          set: {
+            attachments: sql`excluded.attachments`,
+            metadata: sql`excluded.metadata`,
+            parts: sql`excluded.parts`,
+          },
+          target: message.id,
+        });
 
       const chatIds = [...new Set(messages.map((m) => m.chatId))];
       const touchedAt = new Date();

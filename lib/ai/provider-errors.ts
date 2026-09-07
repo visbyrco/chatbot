@@ -291,8 +291,7 @@ export function getStreamErrorMessage(error: unknown): string {
 
   if (
     lowered.includes("x-opencode-session") ||
-    lowered.includes("missingsessionid") ||
-    lowered.includes("console go")
+    lowered.includes("missingsessionid")
   ) {
     return cleaned
       ? `OpenCode Go rejected the request: ${withTrailingPeriod(cleaned)} The app now sends a per-chat session header, so retry. If it persists, check the provider base URL and see https://opencode.ai/docs/go/#where-can-i-use-it.`
