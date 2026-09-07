@@ -22,6 +22,7 @@ import {
 import { getCustomCapabilitiesForUser } from "@/lib/ai/models";
 import { calculateUsageCost, getModelPricing } from "@/lib/ai/pricing";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
+import { getStreamErrorMessage } from "@/lib/ai/provider-errors";
 import {
   getCustomProviderOptionsKey,
   getLanguageModel,
@@ -75,32 +76,6 @@ import { type PostRequestBody, postRequestBodySchema } from "./schema";
 export const maxDuration = 60;
 
 const HEALTH_CHECK_DELAY_MS = 9000;
-
-function getStreamErrorMessage(error: unknown): string {
-  if (error && typeof error === "object") {
-    const e = error as Record<string, unknown>;
-
-    if (
-      e.statusCode === 401 ||
-      String(e.message).toLowerCase().includes("invalid api key")
-    ) {
-      return "Invalid API key. Please check the provider's API key in settings.";
-    }
-
-    if (
-      String(e.message).toLowerCase().includes("decrypt") ||
-      String(e.cause).toLowerCase().includes("decrypt")
-    ) {
-      return "API key could not be decrypted. If you changed ENCRYPTION_KEY, update the provider's API key in settings.";
-    }
-
-    if (typeof e.message === "string" && e.message.length > 0) {
-      return `Provider error: ${e.message}`;
-    }
-  }
-
-  return "An error occurred while sending the message. Please try again.";
-}
 
 function isModelStreamActivity(chunk: { type: string }) {
   return !["start", "start-step", "finish-step", "finish", "raw"].includes(
@@ -882,9 +857,7 @@ export async function POST(request: Request) {
     }
 
     console.error("Unhandled error in chat API:", error);
-    const cause =
-      error instanceof Error ? error.message : String(error ?? "Unknown error");
-    return new ChatbotError("bad_request:api", cause).toResponse();
+    return new ChatbotError("bad_request:api").toResponse();
   }
 }
 

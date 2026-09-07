@@ -1,3 +1,5 @@
+import { sanitizeErrorCause } from "./ai/provider-errors";
+
 export type ErrorType =
   | "bad_request"
   | "unauthorized"
@@ -82,7 +84,7 @@ export class ChatbotError extends Error {
         message,
       });
     }
-    const sanitizedCause = typeof cause === "string" ? cause : undefined;
+    const sanitizedCause = sanitizeErrorCause(cause);
 
     return Response.json(
       { cause: sanitizedCause, code, message },
