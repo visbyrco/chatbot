@@ -857,9 +857,7 @@ export async function POST(request: Request) {
     }
 
     console.error("Unhandled error in chat API:", error);
-    const cause =
-      error instanceof Error ? error.message : String(error ?? "Unknown error");
-    return new ChatbotError("bad_request:api", cause).toResponse();
+    return new ChatbotError("bad_request:api").toResponse();
   }
 }
 

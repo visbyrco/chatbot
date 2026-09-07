@@ -9,7 +9,7 @@ const MAX_MESSAGE_LENGTH = 500;
 const GENERIC_WRAPPER_PATTERN =
   /^AI_APICallError:|^API call failed with status/i;
 const ABORT_PATTERN =
-  /\b(aborted|aborterror|aborted by user|cancelled|canceled)\b|signal aborted/i;
+  /\b(aborted|aborterror)\b|signal aborted|cancell?ed by user|request (was )?cancell?ed\b/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -24,6 +24,8 @@ export function redactSecrets(message: string): string {
     .replace(/(sk-[A-Za-z0-9-_]{4})[A-Za-z0-9-_]+/g, "$1…")
     .replace(/(api[_-]?key\s*[:=]\s*['"]?)[^'"\s,}]+/gi, "$1[redacted]")
     .replace(/(x-api-key\s*[:=]\s*['"]?)[^'"\s,}]+/gi, "$1[redacted]")
+    .replace(/\b(xai-[A-Za-z0-9-_]+|AIza[A-Za-z0-9-_]{20,})\b/g, "[redacted]")
+    .replace(/\b(org-[A-Za-z0-9]{10,})\b/g, "org-[redacted]")
     .replace(/Bearer\s+[A-Za-z0-9._~-]+/g, "Bearer [redacted]");
 }
 
@@ -76,7 +78,10 @@ export function extractProviderDetail(
       trimmed.length < MAX_BODY_PARSE_LENGTH
     ) {
       try {
-        return extractProviderDetail(JSON.parse(trimmed), depth + 1) ?? trimmed;
+        const parsed: unknown = JSON.parse(trimmed);
+        // An empty parsed body carries no detail; return null so callers
+        // fall through to wrapper fallbacks instead of surfacing "{}".
+        return extractProviderDetail(parsed, depth + 1) ?? null;
       } catch {
         return trimmed;
       }
@@ -174,6 +179,34 @@ export function getErrorStatus(error: unknown, depth = 0): number | null {
     return null;
   }
   const record = error as Record<string, unknown>;
+  // Status sometimes hides inside a JSON-string payload body.
+  for (const key of ["responseBody", "data"] as const) {
+    const raw = record[key];
+    if (typeof raw === "string") {
+      const body = raw.trim();
+      if (
+        body.length < MAX_BODY_PARSE_LENGTH &&
+        (body.startsWith("{") || body.startsWith("["))
+      ) {
+        try {
+          const nested = getErrorStatus(JSON.parse(body), depth + 1);
+          if (nested !== null) {
+            return nested;
+          }
+        } catch {
+          // Not JSON; fall through to the other fields.
+        }
+      }
+    }
+  }
+  if (
+    typeof record.code === "number" &&
+    Number.isFinite(record.code) &&
+    record.code >= 100 &&
+    record.code < 600
+  ) {
+    return record.code;
+  }
   for (const key of ["statusCode", "status"]) {
     const value = record[key];
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -275,6 +308,20 @@ export function sanitizeErrorCause(cause: unknown): string | undefined {
   return undefined;
 }
 
+function deepestCause(error: Error): unknown {
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+  while (
+    current instanceof Error &&
+    current.cause !== undefined &&
+    !seen.has(current.cause)
+  ) {
+    seen.add(current);
+    current = current.cause;
+  }
+  return current;
+}
+
 export function formatToastDescription(
   message: string,
   cause: unknown
@@ -283,7 +330,9 @@ export function formatToastDescription(
     typeof cause === "string"
       ? cause
       : cause instanceof Error
-        ? cause.message
+        ? (extractProviderDetail(deepestCause(cause)) ??
+          extractProviderDetail(cause) ??
+          cause.message)
         : "";
   let description = message;
   if (causeText && !description.includes(causeText)) {

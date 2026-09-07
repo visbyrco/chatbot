@@ -105,6 +105,11 @@ describe("extractProviderDetail", () => {
     expect(extractProviderDetail("   ")).toBeNull();
     expect(extractProviderDetail({})).toBeNull();
   });
+
+  it("returns null for empty JSON bodies instead of raw braces", () => {
+    expect(extractProviderDetail("{}")).toBeNull();
+    expect(extractProviderDetail("[]")).toBeNull();
+  });
 });
 
 describe("getErrorStatus", () => {
@@ -123,6 +128,19 @@ describe("getErrorStatus", () => {
   it("returns null when no status exists", () => {
     expect(getErrorStatus(new Error("boom"))).toBeNull();
   });
+
+  it("finds status inside a JSON-string body", () => {
+    expect(
+      getErrorStatus({
+        responseBody: JSON.stringify({ error: { status: 429 } }),
+      })
+    ).toBe(429);
+  });
+
+  it("reads numeric error codes", () => {
+    expect(getErrorStatus({ code: 503 })).toBe(503);
+    expect(getErrorStatus({ code: 99 })).toBeNull();
+  });
 });
 
 describe("cleanProviderMessage", () => {
@@ -140,6 +158,18 @@ describe("cleanProviderMessage", () => {
     expect(cleaned).toContain("sk-abcd…");
     expect(cleaned.length).toBeLessThanOrEqual(500);
   });
+
+  it("redacts xAI, Google, and org prefixes", () => {
+    expect(redactSecrets("key xai-abc123XYZ failed")).toBe(
+      "key [redacted] failed"
+    );
+    expect(
+      redactSecrets("key AIzaSyAbcdefghij1234567890abcdefghi failed")
+    ).toBe("key [redacted] failed");
+    expect(redactSecrets("org org-abc123XYZ789 here")).toBe(
+      "org org-[redacted] here"
+    );
+  });
 });
 
 describe("isAbortError", () => {
@@ -153,6 +183,14 @@ describe("isAbortError", () => {
 
   it("does not flag provider errors", () => {
     expect(isAbortError(new Error("Incorrect API key"))).toBe(false);
+  });
+
+  it("does not treat billing cancellations as aborts", () => {
+    const message = getStreamErrorMessage(
+      new Error("Your subscription was cancelled due to billing")
+    );
+    expect(message).not.toBe("Request was cancelled. Please try again.");
+    expect(message).toContain("Provider error");
   });
 });
 
@@ -246,5 +284,15 @@ describe("formatToastDescription", () => {
   it("truncates long descriptions", () => {
     const result = formatToastDescription("x".repeat(400), "y".repeat(400));
     expect(result.length).toBeLessThanOrEqual(500);
+  });
+
+  it("unwraps nested Error causes", () => {
+    const inner = new Error("API call failed", {
+      cause: { responseBody: { error: { message: "model overloaded" } } },
+    });
+    const outer = new Error("request failed", { cause: inner });
+    expect(formatToastDescription("request failed", outer)).toContain(
+      "model overloaded"
+    );
   });
 });
