@@ -21,6 +21,7 @@ import { useDataStream } from "@/components/chat/data-stream-provider";
 import { toast } from "@/components/chat/toast";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import type { ChatModel, ReasoningEffort } from "@/lib/ai/models.client";
+import { formatToastDescription } from "@/lib/ai/provider-errors";
 import type { ToolId } from "@/lib/ai/tools/metadata";
 import { TOOL_IDS, TOOL_IDS_SET } from "@/lib/ai/tools/metadata";
 import { ChatbotError } from "@/lib/errors";
@@ -177,17 +178,10 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     },
     onError: (error) => {
       if (error instanceof ChatbotError) {
-        const cause =
-          typeof error.cause === "string"
-            ? error.cause
-            : error.cause instanceof Error
-              ? error.cause.message
-              : "";
-        const description =
-          cause && cause !== error.message
-            ? `${error.message} ${cause}`
-            : error.message;
-        toast({ description, type: "error" });
+        toast({
+          description: formatToastDescription(error.message, error.cause),
+          type: "error",
+        });
       } else {
         toast({
           description: error.message || "Oops, an error occurred!",
