@@ -246,6 +246,22 @@ describe("getStreamErrorMessage", () => {
       "An error occurred while sending the message. Please try again."
     );
   });
+
+  it("explains OpenCode Go session-header rejections", () => {
+    const message = getStreamErrorMessage({
+      responseBody: JSON.stringify({
+        error: {
+          message:
+            "Error from provider (Console Go): Request is missing x-opencode-session and cannot be routed efficiently. Please see https://opencode.ai/docs/go/#where-can-i-use-it",
+          type: "MissingSessionID",
+        },
+        type: "error",
+      }),
+      statusCode: 400,
+    });
+    expect(message).toContain("OpenCode Go rejected the request");
+    expect(message).toContain("x-opencode-session");
+  });
 });
 
 describe("sanitizeErrorCause", () => {

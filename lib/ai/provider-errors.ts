@@ -289,6 +289,15 @@ export function getStreamErrorMessage(error: unknown): string {
     return "API key could not be decrypted. If you changed ENCRYPTION_KEY, update the provider's API key in settings.";
   }
 
+  if (
+    lowered.includes("x-opencode-session") ||
+    lowered.includes("missingsessionid")
+  ) {
+    return cleaned
+      ? `OpenCode Go rejected the request: ${withTrailingPeriod(cleaned)} The app now sends a per-chat session header, so retry. If it persists, check the provider base URL and see https://opencode.ai/docs/go/#where-can-i-use-it.`
+      : "OpenCode Go rejected the request because the session header was missing. Please retry, and see https://opencode.ai/docs/go/#where-can-i-use-it if it persists.";
+  }
+
   if (cleaned.length > 0) {
     return status
       ? `Provider error (${status}): ${cleaned}`
