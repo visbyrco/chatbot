@@ -76,27 +76,160 @@ export const maxDuration = 60;
 
 const HEALTH_CHECK_DELAY_MS = 9000;
 
+function extractProviderDetail(error: unknown, depth = 0): string | null {
+  if (depth > 4 || error === null || error === undefined) {
+    return null;
+  }
+
+  if (typeof error === "string") {
+    const trimmed = error.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+    // Try to parse JSON-encoded bodies (AI SDK responseBody is often a string)
+    if (trimmed.startsWith("{")) {
+      try {
+        return extractProviderDetail(JSON.parse(trimmed), depth + 1);
+      } catch {
+        return trimmed;
+      }
+    }
+    return trimmed;
+  }
+
+  if (typeof error !== "object") {
+    return null;
+  }
+
+  const e = error as Record<string, unknown>;
+
+  // AI SDK APICallError shapes: responseBody / data hold the provider payload.
+  // Check transport payloads before the SDK's generic wrapper message, and
+  // the nested `error` field after it so a bare code string does not shadow
+  // a more detailed sibling `message`.
+  for (const key of ["responseBody", "data", "response", "body"]) {
+    const nested = e[key];
+    if (
+      typeof nested === "string" ||
+      (typeof nested === "object" && nested !== null)
+    ) {
+      const found = extractProviderDetail(nested, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  // Common provider payload: { error: { message, code }, message, detail }.
+  // The SDK wrapper prefix (if any) is stripped later in cleanProviderMessage.
+  if (typeof e.message === "string" && e.message.trim().length > 0) {
+    return e.message.trim();
+  }
+
+  for (const key of ["detail", "description"]) {
+    if (typeof e[key] === "string" && (e[key] as string).trim().length > 0) {
+      return (e[key] as string).trim();
+    }
+  }
+
+  if (typeof e.code === "string" && typeof e.type === "string") {
+    return `${e.type}: ${e.code}`;
+  }
+  if (typeof e.code === "string" && e.code.length > 0) {
+    return e.code;
+  }
+
+  if (
+    typeof e.error === "string" ||
+    (typeof e.error === "object" && e.error !== null)
+  ) {
+    const found = extractProviderDetail(e.error, depth + 1);
+    if (found) {
+      return found;
+    }
+  }
+
+  // Recurse into cause chain (Error.cause, { cause }, nested arrays)
+  if (e.cause !== undefined) {
+    const found = extractProviderDetail(e.cause, depth + 1);
+    if (found) {
+      return found;
+    }
+  }
+  if (Array.isArray(e.errors)) {
+    for (const item of e.errors) {
+      const found = extractProviderDetail(item, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getErrorStatus(error: unknown, depth = 0): number | null {
+  if (depth > 4 || error === null || typeof error !== "object") {
+    return null;
+  }
+  const e = error as Record<string, unknown>;
+  for (const key of ["statusCode", "status"]) {
+    const value = e[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && /^\d{3}$/.test(value)) {
+      return Number.parseInt(value, 10);
+    }
+  }
+  if (e.cause !== undefined) {
+    return getErrorStatus(e.cause, depth + 1);
+  }
+  return null;
+}
+
+function cleanProviderMessage(raw: string): string {
+  let message = raw.trim();
+  // Drop duplicated SDK wrapper prefixes, keep the provider sentence
+  message = message
+    .replace(/^AI_APICallError:\s*/i, "")
+    .replace(/^API call failed with status \d+[^:]*:\s*/i, "")
+    .replace(/^Provider error:\s*/i, "")
+    .trim();
+  // Collapse whitespace; toasts render multiline but a wall of JSON is useless
+  message = message.replace(/\s+/g, " ").trim();
+  const MAX_LENGTH = 500;
+  if (message.length > MAX_LENGTH) {
+    return `${message.slice(0, MAX_LENGTH - 1).trimEnd()}…`;
+  }
+  return message;
+}
+
 function getStreamErrorMessage(error: unknown): string {
-  if (error && typeof error === "object") {
-    const e = error as Record<string, unknown>;
+  const status = getErrorStatus(error);
+  const detail = extractProviderDetail(error);
+  const cleaned = detail ? cleanProviderMessage(detail) : "";
+  const lowered = cleaned.toLowerCase();
 
-    if (
-      e.statusCode === 401 ||
-      String(e.message).toLowerCase().includes("invalid api key")
-    ) {
-      return "Invalid API key. Please check the provider's API key in settings.";
-    }
+  if (
+    status === 401 ||
+    lowered.includes("invalid api key") ||
+    lowered.includes("incorrect api key") ||
+    lowered.includes("unauthorized")
+  ) {
+    return cleaned
+      ? `Invalid API key: ${cleaned} Please check the provider's API key in settings.`
+      : "Invalid API key. Please check the provider's API key in settings.";
+  }
 
-    if (
-      String(e.message).toLowerCase().includes("decrypt") ||
-      String(e.cause).toLowerCase().includes("decrypt")
-    ) {
-      return "API key could not be decrypted. If you changed ENCRYPTION_KEY, update the provider's API key in settings.";
-    }
+  if (lowered.includes("decrypt")) {
+    return "API key could not be decrypted. If you changed ENCRYPTION_KEY, update the provider's API key in settings.";
+  }
 
-    if (typeof e.message === "string" && e.message.length > 0) {
-      return `Provider error: ${e.message}`;
-    }
+  if (cleaned.length > 0) {
+    return status
+      ? `Provider error (${status}): ${cleaned}`
+      : `Provider error: ${cleaned}`;
   }
 
   return "An error occurred while sending the message. Please try again.";

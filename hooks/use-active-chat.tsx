@@ -177,7 +177,17 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     },
     onError: (error) => {
       if (error instanceof ChatbotError) {
-        toast({ description: error.message, type: "error" });
+        const cause =
+          typeof error.cause === "string"
+            ? error.cause
+            : error.cause instanceof Error
+              ? error.cause.message
+              : "";
+        const description =
+          cause && cause !== error.message
+            ? `${error.message} ${cause}`
+            : error.message;
+        toast({ description, type: "error" });
       } else {
         toast({
           description: error.message || "Oops, an error occurred!",

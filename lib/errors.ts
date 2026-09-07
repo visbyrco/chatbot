@@ -82,7 +82,12 @@ export class ChatbotError extends Error {
         message,
       });
     }
-    const sanitizedCause = typeof cause === "string" ? cause : undefined;
+    const sanitizedCause =
+      typeof cause === "string"
+        ? cause
+        : cause instanceof Error
+          ? (cause.message ?? String(cause))
+          : undefined;
 
     return Response.json(
       { cause: sanitizedCause, code, message },
