@@ -28,7 +28,7 @@ export function SidebarToggle({
         </Button>
       </TooltipTrigger>
       <TooltipContent align="start" className="hidden md:block">
-        Toggle Sidebar
+        Toggle Sidebar (Ctrl+B)
       </TooltipContent>
     </Tooltip>
   );

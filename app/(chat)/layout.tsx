@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { Toaster } from "sonner";
 import { AppSidebar } from "@/components/chat/app-sidebar";
 import { ChatShellWrapper } from "@/components/chat/chat-shell-wrapper";
+import { ChatShortcuts } from "@/components/chat/chat-shortcuts";
 import { DataStreamProvider } from "@/components/chat/data-stream-provider";
 import { PreferencesSync } from "@/components/preferences-sync";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -45,6 +46,7 @@ async function SidebarShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider defaultOpen={!isCollapsed}>
+      <ChatShortcuts />
       <AppSidebar testEnvironment={usesMockAuthNow()} user={session?.user} />
       <SidebarInset>
         <Suspense fallback={<div className="flex h-dvh" />}>
