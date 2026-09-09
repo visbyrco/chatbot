@@ -105,7 +105,7 @@ export function AppSidebar({
                 <SidebarMenuButton
                   className="h-9 rounded-lg bg-primary text-[14px] text-primary-foreground transition-all duration-150 hover:brightness-110 active:scale-[0.99]"
                   onClick={handleNewChat}
-                  tooltip="New Chat"
+                  tooltip="New Chat (Ctrl+Shift+O)"
                 >
                   <PenSquareIcon className="size-4" />
                   <span className="font-medium">New chat</span>
