@@ -571,7 +571,7 @@ function ProvidersPanel() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold tracking-tight">
@@ -676,8 +676,9 @@ function ProviderRow({
 
   return (
     <div
-      className="group overflow-hidden rounded-xl border border-border bg-card transition-colors duration-200 hover:border-foreground/15 data-[expanded=true]:border-foreground/20 data-[expanded=true]:shadow-[0_12px_40px_-16px_rgb(0_0_0/0.35)]"
+      className="overflow-hidden rounded-xl border border-border bg-card transition-colors duration-200 hover:border-foreground/15 data-[expanded=true]:border-foreground/20 data-[expanded=true]:shadow-[0_12px_40px_-16px_rgb(0_0_0/0.35)]"
       data-expanded={isExpanded}
+      data-testid="provider-row"
     >
       <ProviderCard
         isExpanded={isExpanded}

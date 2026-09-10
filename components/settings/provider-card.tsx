@@ -55,6 +55,9 @@ export function ProviderCard({
   const [showEdit, setShowEdit] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [testStatus, setTestStatus] = useState<"error" | "idle" | "success">(
+    "idle"
+  );
 
   const handleTest = useCallback(async () => {
     setIsTesting(true);
@@ -66,11 +69,14 @@ export function ProviderCard({
       const data = await response.json();
 
       if (data.success) {
+        setTestStatus("success");
         toast({ description: data.message, type: "success" });
       } else {
+        setTestStatus("error");
         toast({ description: data.error, type: "error" });
       }
     } catch {
+      setTestStatus("error");
       toast({ description: "Connection test failed", type: "error" });
     } finally {
       setIsTesting(false);
@@ -138,25 +144,41 @@ export function ProviderCard({
           )}
         </div>
 
-        <button
-          aria-expanded={isExpanded}
-          className="flex min-w-0 flex-1 cursor-pointer flex-col items-start gap-1 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onToggle}
-          type="button"
-        >
-          <span className="flex w-full min-w-0 items-center gap-2">
-            <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+          <button
+            aria-expanded={isExpanded}
+            className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onToggle}
+            type="button"
+          >
+            <span
+              aria-label={
+                testStatus === "success"
+                  ? "Last connection test succeeded"
+                  : testStatus === "error"
+                    ? "Last connection test failed"
+                    : "Not tested yet"
+              }
+              className={
+                testStatus === "success"
+                  ? "size-1.5 shrink-0 rounded-full bg-emerald-500"
+                  : testStatus === "error"
+                    ? "size-1.5 shrink-0 rounded-full bg-destructive"
+                    : "size-1.5 shrink-0 rounded-full bg-muted-foreground/40"
+              }
+              role="status"
+            />
             <span className="truncate text-[14px] font-semibold tracking-tight">
               {provider.name}
             </span>
-            <span className="hidden shrink-0 rounded-md border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wider text-muted-foreground uppercase sm:inline-block">
+            <span className="shrink-0 rounded-md border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
               {provider.type === "anthropic" ? "Anthropic" : "OpenAI"}
             </span>
-          </span>
-          <span className="w-full truncate font-mono text-xs text-muted-foreground">
+          </button>
+          <p className="w-full truncate font-mono text-xs text-muted-foreground select-text">
             {provider.baseURL}
-          </span>
-        </button>
+          </p>
+        </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
           <Button

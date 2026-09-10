@@ -6,6 +6,7 @@ import {
   Download,
   Eye,
   Loader2,
+  type LucideIcon,
   Pencil,
   Plus,
   RotateCcw,
@@ -59,13 +60,18 @@ type CapabilityKey = "tools" | "vision" | "reasoning";
 
 const CAPABILITY_META: Array<{
   hint: string;
-  icon: typeof Wrench;
+  icon: LucideIcon;
   key: CapabilityKey;
   label: string;
 }> = [
   { hint: "Function calling", icon: Wrench, key: "tools", label: "Tools" },
   { hint: "Image input", icon: Eye, key: "vision", label: "Vision" },
-  { hint: "Extended thinking", icon: Brain, key: "reasoning", label: "Reason" },
+  {
+    hint: "Extended thinking",
+    icon: Brain,
+    key: "reasoning",
+    label: "Reasoning",
+  },
 ];
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -472,7 +478,7 @@ function ModelRow({
             </p>
             <Button
               aria-label="Edit model name"
-              className="size-6 shrink-0 p-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              className="size-6 shrink-0 p-0 transition-opacity focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
               onClick={handleStartEditName}
               size="icon"
               variant="ghost"
@@ -513,7 +519,7 @@ function ModelRow({
       </div>
       <Button
         aria-label={`Remove ${model.name}`}
-        className="size-8 shrink-0 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+        className="size-8 shrink-0 p-0 text-muted-foreground transition-opacity hover:text-destructive focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
         onClick={handleDelete}
         size="icon"
         variant="ghost"
@@ -537,7 +543,7 @@ function CapabilityPill({
   capabilityKey: CapabilityKey;
   disabled: boolean;
   hint: string;
-  icon: typeof Wrench;
+  icon: LucideIcon;
   label: string;
   onToggle: (key: CapabilityKey) => void;
 }) {
@@ -547,6 +553,7 @@ function CapabilityPill({
 
   return (
     <button
+      aria-label={`${label} — ${hint}`}
       aria-pressed={active}
       className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         active
