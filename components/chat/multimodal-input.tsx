@@ -16,7 +16,6 @@ import {
   type Dispatch,
   Fragment,
   memo,
-  type ReactNode,
   type SetStateAction,
   useCallback,
   useEffect,
@@ -30,6 +29,7 @@ import { useLocalStorage, useWindowSize } from "usehooks-ts";
 import {
   ModelSelector,
   ModelSelectorContent,
+  ModelSelectorEmpty,
   ModelSelectorGroup,
   ModelSelectorInput,
   ModelSelectorItem,
@@ -79,6 +79,11 @@ function setCookie(name: string, value: string) {
   // biome-ignore lint/suspicious/noDocumentCookie: needed for client-side cookie setting
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}`;
 }
+
+// Number of model entries rendered in the picker before the user refines the
+// search or explicitly asks for more. Rendering hundreds of cmdk items with
+// logos at once is what made the picker slow.
+const MODEL_PICKER_PAGE_SIZE = 50;
 
 function PureMultimodalInput({
   chatId,
@@ -856,7 +861,7 @@ function getReasoningEfforts(
   );
 }
 
-function ModelSelectorOption({
+const ModelSelectorOption = memo(function ModelSelectorOptionInner({
   capabilities,
   isPending,
   model,
@@ -870,16 +875,7 @@ function ModelSelectorOption({
   selectedModelId: string;
 }) {
   const logoProvider = model.providerKey ?? model.id.split("/")[0];
-  const maybeWithTooltip = (icon: ReactNode, label: string) => (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">{icon}</span>
-      </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={8}>
-        {label}
-      </TooltipContent>
-    </Tooltip>
-  );
+  const modelCapabilities = capabilities?.[model.id];
   const handleSelect = useCallback(
     () => onSelectModel(model),
     [model, onSelectModel]
@@ -893,6 +889,7 @@ function ModelSelectorOption({
         isPending &&
           "bg-primary/8 text-foreground ring-1 ring-inset ring-primary/20 data-[selected=true]:bg-primary/10"
       )}
+      keywords={[model.name, model.id]}
       onSelect={handleSelect}
       value={model.id}
     >
@@ -906,29 +903,26 @@ function ModelSelectorOption({
         </span>
       ) : (
         <div className="ml-auto flex items-center gap-2 text-foreground/70">
-          {capabilities?.[model.id]?.tools
-            ? maybeWithTooltip(
-                <WrenchIcon className="size-3.5" />,
-                "Supports tool use"
-              )
-            : null}
-          {capabilities?.[model.id]?.vision
-            ? maybeWithTooltip(
-                <EyeIcon className="size-3.5" />,
-                "Supports vision"
-              )
-            : null}
-          {capabilities?.[model.id]?.reasoning
-            ? maybeWithTooltip(
-                <BrainIcon className="size-3.5" />,
-                "Supports reasoning"
-              )
-            : null}
+          {modelCapabilities?.tools ? (
+            <span className="inline-flex" title="Supports tool use">
+              <WrenchIcon className="size-3.5" />
+            </span>
+          ) : null}
+          {modelCapabilities?.vision ? (
+            <span className="inline-flex" title="Supports vision">
+              <EyeIcon className="size-3.5" />
+            </span>
+          ) : null}
+          {modelCapabilities?.reasoning ? (
+            <span className="inline-flex" title="Supports reasoning">
+              <BrainIcon className="size-3.5" />
+            </span>
+          ) : null}
         </div>
       )}
     </ModelSelectorItem>
   );
-}
+});
 
 function ReasoningEffortPicker({
   efforts,
@@ -1075,6 +1069,8 @@ function PureModelSelectorCompact({
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   const [draftReasoningEffort, setDraftReasoningEffort] =
     useState<ReasoningEffort>("default");
+  const [search, setSearch] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(MODEL_PICKER_PAGE_SIZE);
   const { data: modelsData, isLoading } = useSWR(
     `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
     (url: string) => fetch(url).then((r) => r.json()),
@@ -1242,11 +1238,69 @@ function PureModelSelectorCompact({
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (!nextOpen) {
+    if (nextOpen) {
+      setSearch("");
+      setVisibleLimit(MODEL_PICKER_PAGE_SIZE);
+    } else {
       setPendingModelId(null);
       setDraftReasoningEffort("default");
     }
   }, []);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    setVisibleLimit(MODEL_PICKER_PAGE_SIZE);
+  }, []);
+
+  const handleShowMore = useCallback(() => {
+    setVisibleLimit((limit) => limit + MODEL_PICKER_PAGE_SIZE);
+  }, []);
+
+  // Filter here instead of letting cmdk filter hundreds of mounted items on
+  // every keystroke. A plain substring match over model metadata is cheap,
+  // and rendering only the first page of matches keeps the DOM small.
+  const filteredModels = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) {
+      return activeModels;
+    }
+    return activeModels.filter((model) => {
+      const providerName = providerNames[model.provider] ?? model.provider;
+      return (
+        model.name.toLowerCase().includes(query) ||
+        model.id.toLowerCase().includes(query) ||
+        providerName.toLowerCase().includes(query)
+      );
+    });
+  }, [activeModels, providerNames, search]);
+
+  const groupedModels = useMemo(() => {
+    const grouped: Record<string, ChatModel[]> = {};
+    for (const model of filteredModels) {
+      const key = model.provider;
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(model);
+    }
+    return Object.keys(grouped)
+      .sort((a, b) => a.localeCompare(b))
+      .map((key) => ({ key, models: grouped[key] }));
+  }, [filteredModels]);
+
+  const visibleModels = useMemo(() => {
+    let remaining = visibleLimit;
+    return groupedModels
+      .map((group) => {
+        if (remaining <= 0) {
+          return { ...group, models: [] as ChatModel[] };
+        }
+        const models = group.models.slice(0, remaining);
+        remaining -= models.length;
+        return { ...group, models };
+      })
+      .filter((group) => group.models.length > 0);
+  }, [groupedModels, visibleLimit]);
 
   const handleDefaultSelect = useCallback(() => {
     commitModel("", "default");
@@ -1319,6 +1373,7 @@ function PureModelSelectorCompact({
         commandDefaultValue={
           isDefaultSelected ? "default" : (selectedModel?.id ?? "default")
         }
+        commandShouldFilter={false}
         onClickCapture={
           preserveComposerFocus ? handlePreserveComposerClick : undefined
         }
@@ -1326,8 +1381,13 @@ function PureModelSelectorCompact({
           preserveComposerFocus ? handleCloseAutoFocus : undefined
         }
       >
-        <ModelSelectorInput placeholder="Search models..." />
+        <ModelSelectorInput
+          onValueChange={handleSearchChange}
+          placeholder="Search models..."
+          value={search}
+        />
         <ModelSelectorList>
+          <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
           {defaultLabel ? (
             <ModelSelectorItem
               aria-current={isDefaultSelected ? "true" : undefined}
@@ -1342,46 +1402,57 @@ function PureModelSelectorCompact({
               </ModelSelectorName>
             </ModelSelectorItem>
           ) : null}
-          {(() => {
-            const grouped: Record<string, ChatModel[]> = {};
-            for (const model of activeModels) {
-              const key = model.provider;
-              if (!grouped[key]) {
-                grouped[key] = [];
-              }
-              grouped[key].push(model);
-            }
-
-            const sortedKeys = Object.keys(grouped).sort((a, b) =>
-              a.localeCompare(b)
-            );
-
-            return sortedKeys.map((key) => (
-              <ModelSelectorGroup heading={providerNames[key] ?? key} key={key}>
-                {grouped[key].map((model) => (
-                  <Fragment key={model.id}>
-                    <ModelSelectorOption
-                      capabilities={capabilities}
-                      isPending={model.id === pendingModelId}
-                      model={model}
-                      onSelectModel={handleModelSelect}
-                      selectedModelId={selectedModel?.id ?? ""}
+          {visibleModels.map((group) => (
+            <ModelSelectorGroup
+              heading={providerNames[group.key] ?? group.key}
+              key={group.key}
+            >
+              {group.models.map((model) => (
+                <Fragment key={model.id}>
+                  <ModelSelectorOption
+                    capabilities={capabilities}
+                    isPending={model.id === pendingModelId}
+                    model={model}
+                    onSelectModel={handleModelSelect}
+                    selectedModelId={selectedModel?.id ?? ""}
+                  />
+                  {model.id === pendingModelId &&
+                  pendingReasoningEfforts.length > 1 ? (
+                    <ReasoningEffortPicker
+                      efforts={pendingReasoningEfforts}
+                      modelName={model.name}
+                      onCommit={handleCommitEffort}
+                      onPreview={setDraftReasoningEffort}
+                      value={draftReasoningEffort}
                     />
-                    {model.id === pendingModelId &&
-                    pendingReasoningEfforts.length > 1 ? (
-                      <ReasoningEffortPicker
-                        efforts={pendingReasoningEfforts}
-                        modelName={model.name}
-                        onCommit={handleCommitEffort}
-                        onPreview={setDraftReasoningEffort}
-                        value={draftReasoningEffort}
-                      />
-                    ) : null}
-                  </Fragment>
-                ))}
-              </ModelSelectorGroup>
-            ));
-          })()}
+                  ) : null}
+                </Fragment>
+              ))}
+            </ModelSelectorGroup>
+          ))}
+          {filteredModels.length >
+          visibleModels.reduce(
+            (count, group) => count + group.models.length,
+            0
+          ) ? (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs text-muted-foreground">
+              <span>
+                Showing{" "}
+                {visibleModels.reduce(
+                  (count, group) => count + group.models.length,
+                  0
+                )}{" "}
+                of {filteredModels.length} models
+              </span>
+              <button
+                className="cursor-pointer rounded-md px-2 py-1 font-medium text-primary hover:bg-primary/10"
+                onClick={handleShowMore}
+                type="button"
+              >
+                Show more
+              </button>
+            </div>
+          ) : null}
         </ModelSelectorList>
       </ModelSelectorContent>
     </ModelSelector>
