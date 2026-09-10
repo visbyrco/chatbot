@@ -130,6 +130,19 @@ test.describe("Title Model Selector", () => {
     expect(titleModel?.value).toBe("");
   });
 
+  test("hides the default row and shows an empty state on no match", async ({
+    page,
+  }) => {
+    await page.getByTestId("model-selector").click();
+
+    await page.getByPlaceholder("Search models...").fill("zzz-no-such-model");
+
+    await expect(
+      page.getByRole("option", { name: "Use active chat model" })
+    ).not.toBeVisible();
+    await expect(page.getByText("No models found.")).toBeVisible();
+  });
+
   test("keeps a long model list scrollable", async ({ page }) => {
     const models = Array.from({ length: 40 }, (_, i) => ({
       description: "Test provider",
