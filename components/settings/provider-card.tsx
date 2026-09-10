@@ -13,7 +13,6 @@ import {
 import { useCallback, useState } from "react";
 import { ModelSelectorLogo } from "@/components/ai-elements/model-selector";
 import { toast } from "@/components/chat/toast";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -56,6 +55,9 @@ export function ProviderCard({
   const [showEdit, setShowEdit] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [testStatus, setTestStatus] = useState<"error" | "idle" | "success">(
+    "idle"
+  );
 
   const handleTest = useCallback(async () => {
     setIsTesting(true);
@@ -67,11 +69,14 @@ export function ProviderCard({
       const data = await response.json();
 
       if (data.success) {
+        setTestStatus("success");
         toast({ description: data.message, type: "success" });
       } else {
+        setTestStatus("error");
         toast({ description: data.error, type: "error" });
       }
     } catch {
+      setTestStatus("error");
       toast({ description: "Connection test failed", type: "error" });
     } finally {
       setIsTesting(false);
@@ -109,9 +114,14 @@ export function ProviderCard({
 
   return (
     <>
-      <div className="flex items-center gap-3 rounded-xl border p-3">
+      <div
+        className="flex min-h-[68px] items-center gap-3 px-3 py-3 transition-colors duration-200 data-[expanded=true]:bg-muted/40"
+        data-expanded={isExpanded}
+      >
         <Button
-          className="size-7 p-0"
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? "Collapse models" : "Expand models"}
+          className="size-8 shrink-0 rounded-md border border-transparent p-0 text-muted-foreground hover:border-border hover:text-foreground"
           onClick={onToggle}
           size="icon"
           variant="ghost"
@@ -123,7 +133,7 @@ export function ProviderCard({
           )}
         </Button>
 
-        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-foreground/5">
+        <div className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-border bg-muted/60">
           {provider.providerKey ? (
             <ModelSelectorLogo
               className="size-5"
@@ -134,27 +144,49 @@ export function ProviderCard({
           )}
         </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium truncate">{provider.name}</span>
-            <Badge variant="secondary">
-              {provider.type === "anthropic"
-                ? "Anthropic Compatible"
-                : "OpenAI Compatible"}
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground truncate">
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+          <button
+            aria-expanded={isExpanded}
+            className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onToggle}
+            type="button"
+          >
+            <span
+              aria-label={
+                testStatus === "success"
+                  ? "Last connection test succeeded"
+                  : testStatus === "error"
+                    ? "Last connection test failed"
+                    : "Not tested yet"
+              }
+              className={
+                testStatus === "success"
+                  ? "size-1.5 shrink-0 rounded-full bg-emerald-500"
+                  : testStatus === "error"
+                    ? "size-1.5 shrink-0 rounded-full bg-destructive"
+                    : "size-1.5 shrink-0 rounded-full bg-muted-foreground/40"
+              }
+              role="status"
+            />
+            <span className="truncate text-[14px] font-semibold tracking-tight">
+              {provider.name}
+            </span>
+            <span className="shrink-0 rounded-md border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+              {provider.type === "anthropic" ? "Anthropic" : "OpenAI"}
+            </span>
+          </button>
+          <p className="w-full truncate font-mono text-xs text-muted-foreground select-text">
             {provider.baseURL}
           </p>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1.5">
           <Button
             aria-label="Test connection"
-            className="size-7 p-0"
+            className="h-8 gap-1.5 px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground"
             disabled={isTesting}
             onClick={handleTest}
-            size="icon"
+            size="sm"
             title="Test connection"
             variant="ghost"
           >
@@ -163,12 +195,18 @@ export function ProviderCard({
             ) : (
               <Plug className="size-3.5" />
             )}
+            <span className="hidden lg:inline">Test</span>
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button className="size-7 p-0" size="icon" variant="ghost">
-                <MoreHorizontal className="size-3.5" />
+              <Button
+                aria-label="Provider actions"
+                className="size-8 p-0 text-muted-foreground hover:text-foreground"
+                size="icon"
+                variant="ghost"
+              >
+                <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
