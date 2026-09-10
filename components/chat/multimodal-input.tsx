@@ -85,6 +85,11 @@ function setCookie(name: string, value: string) {
 // logos at once is what made the picker slow.
 const MODEL_PICKER_PAGE_SIZE = 50;
 
+// Stable empty fallbacks so the filter/group memos below are not invalidated
+// by a fresh object identity on every render while the catalog is loading.
+const EMPTY_MODELS: ChatModel[] = [];
+const EMPTY_PROVIDER_NAMES: Record<string, string> = {};
+
 function PureMultimodalInput({
   chatId,
   input,
@@ -889,7 +894,6 @@ const ModelSelectorOption = memo(function ModelSelectorOptionInner({
         isPending &&
           "bg-primary/8 text-foreground ring-1 ring-inset ring-primary/20 data-[selected=true]:bg-primary/10"
       )}
-      keywords={[model.name, model.id]}
       onSelect={handleSelect}
       value={model.id}
     >
@@ -1080,8 +1084,9 @@ function PureModelSelectorCompact({
   const capabilities: Record<string, ModelCapabilities> | undefined =
     modelsData?.capabilities ?? modelsData;
   const dynamicModels: ChatModel[] | undefined = modelsData?.models;
-  const providerNames: Record<string, string> = modelsData?.providerNames ?? {};
-  const activeModels = dynamicModels ?? [];
+  const providerNames: Record<string, string> =
+    modelsData?.providerNames ?? EMPTY_PROVIDER_NAMES;
+  const activeModels = dynamicModels ?? EMPTY_MODELS;
 
   const isDefaultSelected =
     defaultLabel !== undefined &&
@@ -1256,23 +1261,40 @@ function PureModelSelectorCompact({
     setVisibleLimit((limit) => limit + MODEL_PICKER_PAGE_SIZE);
   }, []);
 
+  // Keep focus in the search input when clicking "Show more" (prevents the
+  // mobile keyboard from dismissing mid-typing).
+  const handleShowMoreMouseDown = useCallback(
+    (event: React.MouseEvent) => event.preventDefault(),
+    []
+  );
+
   // Filter here instead of letting cmdk filter hundreds of mounted items on
   // every keystroke. A plain substring match over model metadata is cheap,
   // and rendering only the first page of matches keeps the DOM small.
+  // Note: this match is strict substring, unlike cmdk's fuzzy matching, so
+  // typos (e.g. "deep seek") no longer match. That tradeoff keeps typing
+  // lag-free with large catalogs.
+  const searchQuery = search.trim().toLowerCase();
   const filteredModels = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) {
+    if (!searchQuery) {
       return activeModels;
     }
     return activeModels.filter((model) => {
       const providerName = providerNames[model.provider] ?? model.provider;
       return (
-        model.name.toLowerCase().includes(query) ||
-        model.id.toLowerCase().includes(query) ||
-        providerName.toLowerCase().includes(query)
+        model.name.toLowerCase().includes(searchQuery) ||
+        model.id.toLowerCase().includes(searchQuery) ||
+        providerName.toLowerCase().includes(searchQuery) ||
+        (model.providerKey?.toLowerCase().includes(searchQuery) ?? false)
       );
     });
-  }, [activeModels, providerNames, search]);
+  }, [activeModels, providerNames, searchQuery]);
+
+  // The "Use active chat model" row is a real cmdk item, so it would keep the
+  // empty state from ever showing. Hide it when the search does not match it.
+  const showDefaultRow =
+    defaultLabel !== undefined &&
+    (searchQuery === "" || defaultLabel.toLowerCase().includes(searchQuery));
 
   const groupedModels = useMemo(() => {
     const grouped: Record<string, ChatModel[]> = {};
@@ -1288,19 +1310,57 @@ function PureModelSelectorCompact({
       .map((key) => ({ key, models: grouped[key] }));
   }, [filteredModels]);
 
+  // Fill the page round-robin across providers so one large provider cannot
+  // push every other provider out of the first page. The selected model is
+  // always included so the picker highlights it on open.
   const visibleModels = useMemo(() => {
-    let remaining = visibleLimit;
-    return groupedModels
-      .map((group) => {
-        if (remaining <= 0) {
-          return { ...group, models: [] as ChatModel[] };
+    const visible: { key: string; models: ChatModel[] }[] = groupedModels.map(
+      (group) => ({ key: group.key, models: [] })
+    );
+    let total = 0;
+    let progressed = true;
+    while (total < visibleLimit && progressed) {
+      progressed = false;
+      for (
+        let i = 0;
+        i < groupedModels.length && total < visibleLimit;
+        i += 1
+      ) {
+        const group = groupedModels[i];
+        const slot = visible[i];
+        if (slot.models.length < group.models.length) {
+          slot.models.push(group.models[slot.models.length]);
+          total += 1;
+          progressed = true;
         }
-        const models = group.models.slice(0, remaining);
-        remaining -= models.length;
-        return { ...group, models };
-      })
-      .filter((group) => group.models.length > 0);
-  }, [groupedModels, visibleLimit]);
+      }
+    }
+    if (
+      selectedModel &&
+      !visible.some((group) =>
+        group.models.some((model) => model.id === selectedModel.id)
+      )
+    ) {
+      const match = filteredModels.find(
+        (model) => model.id === selectedModel.id
+      );
+      if (match) {
+        const slot = visible.find((group) => group.key === match.provider);
+        if (slot) {
+          slot.models.push(match);
+        } else {
+          visible.push({ key: match.provider, models: [match] });
+        }
+      }
+    }
+    return visible.filter((group) => group.models.length > 0);
+  }, [filteredModels, groupedModels, selectedModel, visibleLimit]);
+
+  const visibleCount = useMemo(
+    () =>
+      visibleModels.reduce((count, group) => count + group.models.length, 0),
+    [visibleModels]
+  );
 
   const handleDefaultSelect = useCallback(() => {
     commitModel("", "default");
@@ -1388,7 +1448,7 @@ function PureModelSelectorCompact({
         />
         <ModelSelectorList>
           <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-          {defaultLabel ? (
+          {showDefaultRow ? (
             <ModelSelectorItem
               aria-current={isDefaultSelected ? "true" : undefined}
               className={cn(
@@ -1430,23 +1490,16 @@ function PureModelSelectorCompact({
               ))}
             </ModelSelectorGroup>
           ))}
-          {filteredModels.length >
-          visibleModels.reduce(
-            (count, group) => count + group.models.length,
-            0
-          ) ? (
-            <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs text-muted-foreground">
+          {filteredModels.length > visibleCount ? (
+            <div className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-border bg-popover px-3 py-2 text-xs text-muted-foreground">
               <span>
-                Showing{" "}
-                {visibleModels.reduce(
-                  (count, group) => count + group.models.length,
-                  0
-                )}{" "}
-                of {filteredModels.length} models
+                Showing {visibleCount} of {filteredModels.length} models
               </span>
               <button
                 className="cursor-pointer rounded-md px-2 py-1 font-medium text-primary hover:bg-primary/10"
+                data-testid="model-picker-show-more"
                 onClick={handleShowMore}
+                onMouseDown={handleShowMoreMouseDown}
                 type="button"
               >
                 Show more
