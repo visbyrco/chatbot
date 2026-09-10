@@ -1,14 +1,17 @@
 "use client";
 
 import {
+  Brain,
   Check,
   Download,
+  Eye,
   Loader2,
   Pencil,
   Plus,
   RotateCcw,
   Sparkles,
   Trash2,
+  Wrench,
   X,
 } from "lucide-react";
 import {
@@ -54,29 +57,15 @@ type ModelManagerProps = {
 
 type CapabilityKey = "tools" | "vision" | "reasoning";
 
-const CAPABILITY_STYLES: Array<{
-  activeClasses: string;
+const CAPABILITY_META: Array<{
+  hint: string;
+  icon: typeof Wrench;
   key: CapabilityKey;
   label: string;
 }> = [
-  {
-    activeClasses:
-      "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-    key: "tools",
-    label: "tools",
-  },
-  {
-    activeClasses:
-      "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
-    key: "vision",
-    label: "vision",
-  },
-  {
-    activeClasses:
-      "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
-    key: "reasoning",
-    label: "reasoning",
-  },
+  { hint: "Function calling", icon: Wrench, key: "tools", label: "Tools" },
+  { hint: "Image input", icon: Eye, key: "vision", label: "Vision" },
+  { hint: "Extended thinking", icon: Brain, key: "reasoning", label: "Reason" },
 ];
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -209,19 +198,25 @@ export function ModelManager({
   }, [error]);
 
   return (
-    <div className="ml-10 mt-2 rounded-xl border border-border bg-muted/60 p-3">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-medium">
+    <div className="border-t border-border bg-muted/25 px-3 py-3 sm:px-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h3 className="flex items-center gap-2 text-[13px] font-semibold tracking-tight">
           Models
+          {models?.length ? (
+            <span className="rounded-full border border-border bg-card px-2 py-0.5 font-mono text-[11px] leading-4 text-muted-foreground tabular-nums">
+              {models.length}
+            </span>
+          ) : null}
           {providerKey ? (
-            <span className="ml-2 text-xs font-normal text-muted-foreground">
-              from models.dev
+            <span className="font-mono text-[11px] font-normal text-muted-foreground">
+              models.dev
             </span>
           ) : null}
         </h3>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           {providerKey ? (
             <Button
+              className="h-7 px-2.5 text-xs"
               disabled={isImporting}
               onClick={handleImportCatalog}
               size="sm"
@@ -232,10 +227,11 @@ export function ModelManager({
               ) : (
                 <Download className="mr-1.5 size-3" />
               )}
-              Refresh from catalog
+              Refresh
             </Button>
           ) : (
             <Button
+              className="h-7 px-2.5 text-xs"
               disabled={isDetecting}
               onClick={handleAutoDetect}
               size="sm"
@@ -249,30 +245,35 @@ export function ModelManager({
               Auto-detect
             </Button>
           )}
-          <Button onClick={handleToggleAddModel} size="sm">
-            <Plus className="mr-1.5 size-3" />
+          <Button
+            className="h-7 px-2.5 text-xs shadow-sm"
+            onClick={handleToggleAddModel}
+            size="sm"
+          >
+            <Plus className="mr-1 size-3" />
             Add Model
           </Button>
           {hasDefaultConfig ? (
             <Button
+              className="h-7 px-2.5 text-xs"
               disabled={isResetting}
               onClick={handleReset}
               size="sm"
-              variant={confirmReset ? "destructive" : "outline"}
+              variant={confirmReset ? "destructive" : "ghost"}
             >
               {isResetting ? (
                 <Loader2 className="mr-1.5 size-3 animate-spin" />
               ) : (
                 <RotateCcw className="mr-1.5 size-3" />
               )}
-              {confirmReset ? "Confirm reset?" : "Reset to default"}
+              {confirmReset ? "Confirm reset?" : "Reset"}
             </Button>
           ) : null}
         </div>
       </div>
 
       {showAddModel ? (
-        <div className="mb-3">
+        <div className="mb-3 overflow-hidden rounded-lg border border-border bg-card">
           <AddModelForm
             onModelAdded={handleModelAdded}
             providerId={providerId}
@@ -281,11 +282,11 @@ export function ModelManager({
       ) : null}
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-4">
+        <div className="flex items-center justify-center py-6">
           <Spinner />
         </div>
       ) : models?.length ? (
-        <div className="flex flex-col gap-1.5">
+        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
           {models.map((model) => (
             <ModelRow
               key={model.id}
@@ -297,9 +298,9 @@ export function ModelManager({
           ))}
         </div>
       ) : (
-        <p className="py-4 text-center text-sm text-muted-foreground">
+        <p className="rounded-lg border border-dashed border-border bg-card/60 px-4 py-6 text-center text-[13px] text-muted-foreground">
           {providerKey
-            ? "No models yet — use Refresh from catalog to import them."
+            ? "No models yet. Use Refresh to import them from the catalog."
             : "No models configured. Add a model manually or use auto-detect."}
         </p>
       )}
@@ -433,18 +434,19 @@ function ModelRow({
   );
 
   return (
-    <div className="flex items-center justify-between rounded-xl bg-transparent px-3 py-2">
+    <div className="group flex items-start justify-between gap-3 px-3 py-3 transition-colors hover:bg-muted/30">
       <div className="min-w-0 flex-1">
         {isEditingName ? (
-          <div className="mb-1 flex items-center gap-1">
+          <div className="mb-1.5 flex items-center gap-1">
             <Input
-              className="h-7 max-w-56 px-2 text-sm"
+              className="h-7 max-w-56 px-2 text-[13px]"
               onChange={handleNameChange}
               onKeyDown={handleNameKeyDown}
               value={nameInput}
             />
             <Button
-              className="size-6 p-0"
+              aria-label="Save name"
+              className="size-7 p-0"
               disabled={isSaving}
               onClick={handleSaveName}
               size="icon"
@@ -453,7 +455,8 @@ function ModelRow({
               <Check className="size-3.5" />
             </Button>
             <Button
-              className="size-6 p-0"
+              aria-label="Cancel edit"
+              className="size-7 p-0"
               disabled={isSaving}
               onClick={handleCancelEditName}
               size="icon"
@@ -463,11 +466,13 @@ function ModelRow({
             </Button>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5">
-            <p className="truncate text-sm font-medium">{model.name}</p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className="truncate text-[13px] font-semibold tracking-tight">
+              {model.name}
+            </p>
             <Button
               aria-label="Edit model name"
-              className="size-5 p-0"
+              className="size-6 shrink-0 p-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
               onClick={handleStartEditName}
               size="icon"
               variant="ghost"
@@ -477,27 +482,28 @@ function ModelRow({
             {model.nameIsCustom ||
             model.capabilitiesIsCustom ||
             model.pricingIsCustom ? (
-              <span className="rounded-md bg-foreground/5 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                custom
+              <span className="shrink-0 rounded border border-border bg-muted px-1 py-px font-mono text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+                edited
               </span>
             ) : null}
           </div>
         )}
-        <p className="truncate text-xs text-muted-foreground">
+        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
           {model.modelId}
         </p>
-        <p className="truncate text-[10px] text-muted-foreground">
+        <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground/80 tabular-nums">
           {model.input === null || model.output === null
             ? "Pricing unavailable"
-            : `$${model.input}/$${model.output} per 1M tokens${model.pricingIsCustom ? " · custom" : ""}`}
+            : `$${model.input} / $${model.output} per 1M${model.pricingIsCustom ? " · edited" : ""}`}
         </p>
-        <div className="mt-1.5 flex gap-1.5">
-          {CAPABILITY_STYLES.map(({ key, label, activeClasses }) => (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {CAPABILITY_META.map(({ hint, icon: Icon, key, label }) => (
             <CapabilityPill
               active={capabilities[key]}
-              activeClasses={activeClasses}
               capabilityKey={key}
               disabled={isSaving}
+              hint={hint}
+              icon={Icon}
               key={key}
               label={label}
               onToggle={handleToggleCapability}
@@ -506,12 +512,13 @@ function ModelRow({
         </div>
       </div>
       <Button
-        className="size-7 p-0"
+        aria-label={`Remove ${model.name}`}
+        className="size-8 shrink-0 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
         onClick={handleDelete}
         size="icon"
         variant="ghost"
       >
-        <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+        <Trash2 className="size-3.5" />
       </Button>
     </div>
   );
@@ -519,16 +526,18 @@ function ModelRow({
 
 function CapabilityPill({
   active,
-  activeClasses,
   capabilityKey,
   disabled,
+  hint,
+  icon: Icon,
   label,
   onToggle,
 }: {
   active: boolean;
-  activeClasses: string;
   capabilityKey: CapabilityKey;
   disabled: boolean;
+  hint: string;
+  icon: typeof Wrench;
   label: string;
   onToggle: (key: CapabilityKey) => void;
 }) {
@@ -539,15 +548,20 @@ function CapabilityPill({
   return (
     <button
       aria-pressed={active}
-      className={`rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors ${
+      className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         active
-          ? activeClasses
-          : "bg-foreground/5 text-muted-foreground hover:bg-foreground/10"
+          ? "border-foreground/20 bg-foreground/[0.06] text-foreground"
+          : "border-transparent bg-foreground/[0.04] text-muted-foreground hover:border-border hover:text-foreground"
       } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
       disabled={disabled}
       onClick={handleClick}
+      title={hint}
       type="button"
     >
+      <span
+        className={`size-1.5 rounded-full ${active ? "bg-emerald-500" : "bg-muted-foreground/30"}`}
+      />
+      <Icon className="size-3" />
       {label}
     </button>
   );

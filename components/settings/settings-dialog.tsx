@@ -239,8 +239,13 @@ export function SettingsDialog({
               ref={contentScrollRef}
             >
               <div className="mx-auto w-full max-w-3xl px-5 py-6 md:px-8 md:py-8">
-                <div className="fade-up flex flex-col gap-6" key={activeSection}>
-                  {activeSection === "preferences" ? <PreferencesPanel /> : null}
+                <div
+                  className="fade-up flex flex-col gap-6"
+                  key={activeSection}
+                >
+                  {activeSection === "preferences" ? (
+                    <PreferencesPanel />
+                  ) : null}
                   {activeSection === "ai-context" ? <AiContextPanel /> : null}
                   {activeSection === "data" ? <DataPanel /> : null}
                   {activeSection === "providers" ? <ProvidersPanel /> : null}
@@ -565,15 +570,32 @@ function ProvidersPanel() {
   }, [error]);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-medium">Custom providers</h3>
-          <p className="text-xs text-muted-foreground">
-            OpenAI and Anthropic compatible endpoints.
+    <div className="flex flex-col gap-5">
+      <div className="flex items-end justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold tracking-tight">
+              Custom providers
+            </h3>
+            {providers?.length ? (
+              <span
+                className="rounded-full border border-border bg-muted px-2 py-0.5 font-mono text-[11px] leading-4 text-muted-foreground tabular-nums"
+                data-testid="provider-count"
+              >
+                {providers.length}
+              </span>
+            ) : null}
+          </div>
+          <p className="max-w-md text-[13px] leading-5 text-muted-foreground">
+            Connect OpenAI or Anthropic compatible endpoints. Models inherit the
+            endpoint base URL and key.
           </p>
         </div>
-        <Button onClick={handleOpenAddProvider} size="sm">
+        <Button
+          className="shrink-0 shadow-sm"
+          onClick={handleOpenAddProvider}
+          size="sm"
+        >
           <Plus className="mr-1.5 size-3.5" />
           Add Provider
         </Button>
@@ -584,7 +606,7 @@ function ProvidersPanel() {
           <Spinner />
         </div>
       ) : providers?.length ? (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {providers.map((provider) => (
             <ProviderRow
               expandedProviderId={expandedProviderId}
@@ -597,20 +619,20 @@ function ProvidersPanel() {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
-          <Server className="size-8 text-muted-foreground" />
-          <div>
-            <p className="font-medium">No custom providers</p>
-            <p className="text-sm text-muted-foreground">
-              Add an OpenAI or Anthropic compatible provider to use your own
-              models
+        <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center">
+          <div className="grid size-10 place-items-center rounded-lg border border-border bg-muted text-muted-foreground">
+            <Server className="size-4" />
+          </div>
+          <div className="flex max-w-sm flex-col gap-1">
+            <p className="text-sm font-semibold tracking-tight">
+              No custom providers yet
+            </p>
+            <p className="text-[13px] leading-5 text-muted-foreground">
+              Add an OpenAI or Anthropic compatible endpoint to use your own
+              models with your own keys.
             </p>
           </div>
-          <Button
-            onClick={handleOpenAddProvider}
-            size="sm"
-            variant="outline"
-          >
+          <Button onClick={handleOpenAddProvider} size="sm" variant="outline">
             <Plus className="mr-1.5 size-3.5" />
             Add your first provider
           </Button>
@@ -653,7 +675,10 @@ function ProviderRow({
   }, [onToggle, provider.id]);
 
   return (
-    <div>
+    <div
+      className="group overflow-hidden rounded-xl border border-border bg-card transition-colors duration-200 hover:border-foreground/15 data-[expanded=true]:border-foreground/20 data-[expanded=true]:shadow-[0_12px_40px_-16px_rgb(0_0_0/0.35)]"
+      data-expanded={isExpanded}
+    >
       <ProviderCard
         isExpanded={isExpanded}
         onDeleted={handleDeleted}
