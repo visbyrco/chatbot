@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TOOL_IDS } from "@/lib/ai/tools/metadata";
 import { ALLOWED_MEDIA_TYPES, isValidAttachmentUrl } from "@/lib/attachments";
+import { MODEL_ID_RE } from "@/lib/validation";
 
 const textPartSchema = z.object({
   text: z.string().min(1).max(40_000),
@@ -49,16 +50,9 @@ export const postRequestBodySchema = z.object({
       "max",
     ])
     .optional(),
-  selectedChatModel: z
-    .string()
-    .min(1)
-    .max(200)
-    .regex(
-      /^([a-z0-9_-]+\/[a-z0-9._-]+|custom-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[a-z0-9._-]+)$/i,
-      {
-        message: "Invalid model id format",
-      }
-    ),
+  selectedChatModel: z.string().min(1).max(200).regex(MODEL_ID_RE, {
+      message: "Invalid model id format",
+    }),
   selectedVisibilityType: z.enum(["public", "private"]),
 });
 
