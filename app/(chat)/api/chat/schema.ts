@@ -50,9 +50,11 @@ export const postRequestBodySchema = z.object({
       "max",
     ])
     .optional(),
-  selectedChatModel: z.string().min(1).max(200).regex(MODEL_ID_RE, {
-      message: "Invalid model id format",
-    }),
+  selectedChatModel: z
+    .string()
+    .min(1)
+    .max(200)
+    .regex(MODEL_ID_RE, { message: "Invalid model id format" }),
   selectedVisibilityType: z.enum(["public", "private"]),
 });
 
