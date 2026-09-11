@@ -16,6 +16,7 @@ import {
   type Dispatch,
   Fragment,
   memo,
+  type ReactNode,
   type SetStateAction,
   useCallback,
   useEffect,
@@ -29,7 +30,6 @@ import { useLocalStorage, useWindowSize } from "usehooks-ts";
 import {
   ModelSelector,
   ModelSelectorContent,
-  ModelSelectorEmpty,
   ModelSelectorGroup,
   ModelSelectorInput,
   ModelSelectorItem,
@@ -79,16 +79,6 @@ function setCookie(name: string, value: string) {
   // biome-ignore lint/suspicious/noDocumentCookie: needed for client-side cookie setting
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}`;
 }
-
-// Number of model entries rendered in the picker before the user refines the
-// search or explicitly asks for more. Rendering hundreds of cmdk items with
-// logos at once is what made the picker slow.
-const MODEL_PICKER_PAGE_SIZE = 50;
-
-// Stable empty fallbacks so the filter/group memos below are not invalidated
-// by a fresh object identity on every render while the catalog is loading.
-const EMPTY_MODELS: ChatModel[] = [];
-const EMPTY_PROVIDER_NAMES: Record<string, string> = {};
 
 function PureMultimodalInput({
   chatId,
@@ -866,7 +856,7 @@ function getReasoningEfforts(
   );
 }
 
-const ModelSelectorOption = memo(function ModelSelectorOptionInner({
+function ModelSelectorOption({
   capabilities,
   isPending,
   model,
@@ -880,7 +870,16 @@ const ModelSelectorOption = memo(function ModelSelectorOptionInner({
   selectedModelId: string;
 }) {
   const logoProvider = model.providerKey ?? model.id.split("/")[0];
-  const modelCapabilities = capabilities?.[model.id];
+  const maybeWithTooltip = (icon: ReactNode, label: string) => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">{icon}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={8}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
   const handleSelect = useCallback(
     () => onSelectModel(model),
     [model, onSelectModel]
@@ -907,26 +906,29 @@ const ModelSelectorOption = memo(function ModelSelectorOptionInner({
         </span>
       ) : (
         <div className="ml-auto flex items-center gap-2 text-foreground/70">
-          {modelCapabilities?.tools ? (
-            <span className="inline-flex" title="Supports tool use">
-              <WrenchIcon className="size-3.5" />
-            </span>
-          ) : null}
-          {modelCapabilities?.vision ? (
-            <span className="inline-flex" title="Supports vision">
-              <EyeIcon className="size-3.5" />
-            </span>
-          ) : null}
-          {modelCapabilities?.reasoning ? (
-            <span className="inline-flex" title="Supports reasoning">
-              <BrainIcon className="size-3.5" />
-            </span>
-          ) : null}
+          {capabilities?.[model.id]?.tools
+            ? maybeWithTooltip(
+                <WrenchIcon className="size-3.5" />,
+                "Supports tool use"
+              )
+            : null}
+          {capabilities?.[model.id]?.vision
+            ? maybeWithTooltip(
+                <EyeIcon className="size-3.5" />,
+                "Supports vision"
+              )
+            : null}
+          {capabilities?.[model.id]?.reasoning
+            ? maybeWithTooltip(
+                <BrainIcon className="size-3.5" />,
+                "Supports reasoning"
+              )
+            : null}
         </div>
       )}
     </ModelSelectorItem>
   );
-});
+}
 
 function ReasoningEffortPicker({
   efforts,
@@ -1073,8 +1075,6 @@ function PureModelSelectorCompact({
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   const [draftReasoningEffort, setDraftReasoningEffort] =
     useState<ReasoningEffort>("default");
-  const [search, setSearch] = useState("");
-  const [visibleLimit, setVisibleLimit] = useState(MODEL_PICKER_PAGE_SIZE);
   const { data: modelsData, isLoading } = useSWR(
     `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
     (url: string) => fetch(url).then((r) => r.json()),
@@ -1084,9 +1084,8 @@ function PureModelSelectorCompact({
   const capabilities: Record<string, ModelCapabilities> | undefined =
     modelsData?.capabilities ?? modelsData;
   const dynamicModels: ChatModel[] | undefined = modelsData?.models;
-  const providerNames: Record<string, string> =
-    modelsData?.providerNames ?? EMPTY_PROVIDER_NAMES;
-  const activeModels = dynamicModels ?? EMPTY_MODELS;
+  const providerNames: Record<string, string> = modelsData?.providerNames ?? {};
+  const activeModels = dynamicModels ?? [];
 
   const isDefaultSelected =
     defaultLabel !== undefined &&
@@ -1243,124 +1242,11 @@ function PureModelSelectorCompact({
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (nextOpen) {
-      setSearch("");
-      setVisibleLimit(MODEL_PICKER_PAGE_SIZE);
-    } else {
+    if (!nextOpen) {
       setPendingModelId(null);
       setDraftReasoningEffort("default");
     }
   }, []);
-
-  const handleSearchChange = useCallback((value: string) => {
-    setSearch(value);
-    setVisibleLimit(MODEL_PICKER_PAGE_SIZE);
-  }, []);
-
-  const handleShowMore = useCallback(() => {
-    setVisibleLimit((limit) => limit + MODEL_PICKER_PAGE_SIZE);
-  }, []);
-
-  // Keep focus in the search input when clicking "Show more" (prevents the
-  // mobile keyboard from dismissing mid-typing).
-  const handleShowMoreMouseDown = useCallback(
-    (event: React.MouseEvent) => event.preventDefault(),
-    []
-  );
-
-  // Filter here instead of letting cmdk filter hundreds of mounted items on
-  // every keystroke. A plain substring match over model metadata is cheap,
-  // and rendering only the first page of matches keeps the DOM small.
-  // Note: this match is strict substring, unlike cmdk's fuzzy matching, so
-  // typos (e.g. "deep seek") no longer match. That tradeoff keeps typing
-  // lag-free with large catalogs.
-  const searchQuery = search.trim().toLowerCase();
-  const filteredModels = useMemo(() => {
-    if (!searchQuery) {
-      return activeModels;
-    }
-    return activeModels.filter((model) => {
-      const providerName = providerNames[model.provider] ?? model.provider;
-      return (
-        model.name.toLowerCase().includes(searchQuery) ||
-        model.id.toLowerCase().includes(searchQuery) ||
-        providerName.toLowerCase().includes(searchQuery) ||
-        (model.providerKey?.toLowerCase().includes(searchQuery) ?? false)
-      );
-    });
-  }, [activeModels, providerNames, searchQuery]);
-
-  // The "Use active chat model" row is a real cmdk item, so it would keep the
-  // empty state from ever showing. Hide it when the search does not match it.
-  const showDefaultRow =
-    defaultLabel !== undefined &&
-    (searchQuery === "" || defaultLabel.toLowerCase().includes(searchQuery));
-
-  const groupedModels = useMemo(() => {
-    const grouped: Record<string, ChatModel[]> = {};
-    for (const model of filteredModels) {
-      const key = model.provider;
-      if (!grouped[key]) {
-        grouped[key] = [];
-      }
-      grouped[key].push(model);
-    }
-    return Object.keys(grouped)
-      .sort((a, b) => a.localeCompare(b))
-      .map((key) => ({ key, models: grouped[key] }));
-  }, [filteredModels]);
-
-  // Fill the page round-robin across providers so one large provider cannot
-  // push every other provider out of the first page. The selected model is
-  // always included so the picker highlights it on open.
-  const visibleModels = useMemo(() => {
-    const visible: { key: string; models: ChatModel[] }[] = groupedModels.map(
-      (group) => ({ key: group.key, models: [] })
-    );
-    let total = 0;
-    let progressed = true;
-    while (total < visibleLimit && progressed) {
-      progressed = false;
-      for (
-        let i = 0;
-        i < groupedModels.length && total < visibleLimit;
-        i += 1
-      ) {
-        const group = groupedModels[i];
-        const slot = visible[i];
-        if (slot.models.length < group.models.length) {
-          slot.models.push(group.models[slot.models.length]);
-          total += 1;
-          progressed = true;
-        }
-      }
-    }
-    if (
-      selectedModel &&
-      !visible.some((group) =>
-        group.models.some((model) => model.id === selectedModel.id)
-      )
-    ) {
-      const match = filteredModels.find(
-        (model) => model.id === selectedModel.id
-      );
-      if (match) {
-        const slot = visible.find((group) => group.key === match.provider);
-        if (slot) {
-          slot.models.push(match);
-        } else {
-          visible.push({ key: match.provider, models: [match] });
-        }
-      }
-    }
-    return visible.filter((group) => group.models.length > 0);
-  }, [filteredModels, groupedModels, selectedModel, visibleLimit]);
-
-  const visibleCount = useMemo(
-    () =>
-      visibleModels.reduce((count, group) => count + group.models.length, 0),
-    [visibleModels]
-  );
 
   const handleDefaultSelect = useCallback(() => {
     commitModel("", "default");
@@ -1433,7 +1319,6 @@ function PureModelSelectorCompact({
         commandDefaultValue={
           isDefaultSelected ? "default" : (selectedModel?.id ?? "default")
         }
-        commandShouldFilter={false}
         onClickCapture={
           preserveComposerFocus ? handlePreserveComposerClick : undefined
         }
@@ -1441,14 +1326,9 @@ function PureModelSelectorCompact({
           preserveComposerFocus ? handleCloseAutoFocus : undefined
         }
       >
-        <ModelSelectorInput
-          onValueChange={handleSearchChange}
-          placeholder="Search models..."
-          value={search}
-        />
+        <ModelSelectorInput placeholder="Search models..." />
         <ModelSelectorList>
-          <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-          {showDefaultRow ? (
+          {defaultLabel ? (
             <ModelSelectorItem
               aria-current={isDefaultSelected ? "true" : undefined}
               className={cn(
@@ -1462,50 +1342,46 @@ function PureModelSelectorCompact({
               </ModelSelectorName>
             </ModelSelectorItem>
           ) : null}
-          {visibleModels.map((group) => (
-            <ModelSelectorGroup
-              heading={providerNames[group.key] ?? group.key}
-              key={group.key}
-            >
-              {group.models.map((model) => (
-                <Fragment key={model.id}>
-                  <ModelSelectorOption
-                    capabilities={capabilities}
-                    isPending={model.id === pendingModelId}
-                    model={model}
-                    onSelectModel={handleModelSelect}
-                    selectedModelId={selectedModel?.id ?? ""}
-                  />
-                  {model.id === pendingModelId &&
-                  pendingReasoningEfforts.length > 1 ? (
-                    <ReasoningEffortPicker
-                      efforts={pendingReasoningEfforts}
-                      modelName={model.name}
-                      onCommit={handleCommitEffort}
-                      onPreview={setDraftReasoningEffort}
-                      value={draftReasoningEffort}
+          {(() => {
+            const grouped: Record<string, ChatModel[]> = {};
+            for (const model of activeModels) {
+              const key = model.provider;
+              if (!grouped[key]) {
+                grouped[key] = [];
+              }
+              grouped[key].push(model);
+            }
+
+            const sortedKeys = Object.keys(grouped).sort((a, b) =>
+              a.localeCompare(b)
+            );
+
+            return sortedKeys.map((key) => (
+              <ModelSelectorGroup heading={providerNames[key] ?? key} key={key}>
+                {grouped[key].map((model) => (
+                  <Fragment key={model.id}>
+                    <ModelSelectorOption
+                      capabilities={capabilities}
+                      isPending={model.id === pendingModelId}
+                      model={model}
+                      onSelectModel={handleModelSelect}
+                      selectedModelId={selectedModel?.id ?? ""}
                     />
-                  ) : null}
-                </Fragment>
-              ))}
-            </ModelSelectorGroup>
-          ))}
-          {filteredModels.length > visibleCount ? (
-            <div className="sticky bottom-0 flex items-center justify-between gap-2 border-t border-border bg-popover px-3 py-2 text-xs text-muted-foreground">
-              <span>
-                Showing {visibleCount} of {filteredModels.length} models
-              </span>
-              <button
-                className="cursor-pointer rounded-md px-2 py-1 font-medium text-primary hover:bg-primary/10"
-                data-testid="model-picker-show-more"
-                onClick={handleShowMore}
-                onMouseDown={handleShowMoreMouseDown}
-                type="button"
-              >
-                Show more
-              </button>
-            </div>
-          ) : null}
+                    {model.id === pendingModelId &&
+                    pendingReasoningEfforts.length > 1 ? (
+                      <ReasoningEffortPicker
+                        efforts={pendingReasoningEfforts}
+                        modelName={model.name}
+                        onCommit={handleCommitEffort}
+                        onPreview={setDraftReasoningEffort}
+                        value={draftReasoningEffort}
+                      />
+                    ) : null}
+                  </Fragment>
+                ))}
+              </ModelSelectorGroup>
+            ));
+          })()}
         </ModelSelectorList>
       </ModelSelectorContent>
     </ModelSelector>

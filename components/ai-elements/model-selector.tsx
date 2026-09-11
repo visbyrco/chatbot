@@ -36,14 +36,12 @@ export type ModelSelectorContentProps = ComponentProps<
   typeof PopoverContent
 > & {
   commandDefaultValue?: ComponentProps<typeof Command>["defaultValue"];
-  commandShouldFilter?: ComponentProps<typeof Command>["shouldFilter"];
   title?: ReactNode;
 };
 
 export const ModelSelectorContent = ({
   className,
   commandDefaultValue,
-  commandShouldFilter,
   children,
   title: _title,
   ...props
@@ -62,7 +60,6 @@ export const ModelSelectorContent = ({
     <Command
       className="**:data-[slot=command-input-wrapper]:h-auto"
       defaultValue={commandDefaultValue}
-      shouldFilter={commandShouldFilter}
     >
       {children}
     </Command>
@@ -225,9 +222,7 @@ export const ModelSelectorLogo = ({
       {...props}
       alt={`${provider} logo`}
       className={cn("size-4 dark:invert", className)}
-      decoding="async"
       height={16}
-      loading="lazy"
       onError={(event) => {
         const target = event.currentTarget;
         target.style.display = "none";
