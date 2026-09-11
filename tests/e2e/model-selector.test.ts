@@ -206,3 +206,50 @@ test.describe("Model Selector", () => {
     await expect(modelButton).toContainText("Max");
   });
 });
+
+test.describe("Model Selector with a large provider list", () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page);
+
+    const models = Array.from({ length: 120 }, (_, i) => ({
+      description: "Big provider",
+      id: `custom-big/openai/big-model-${i + 1}`,
+      name: `Big Model ${i + 1}`,
+      provider: "custom-big",
+      providerKey: "openrouter",
+    }));
+
+    await page.route("**/api/models", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          capabilities: {},
+          models,
+          providerNames: { "custom-big": "Big Provider" },
+        },
+      });
+    });
+    await page.goto("/");
+  });
+
+  test("clicks a deep model with no search applied", async ({ page }) => {
+    const modelButton = page.getByTestId("model-selector");
+    await modelButton.click();
+
+    await page.getByRole("option", { name: /Big Model 117/ }).click();
+
+    await expect(page.getByPlaceholder("Search models...")).not.toBeVisible();
+    await expect(modelButton).toContainText("Big Model 117");
+  });
+
+  test("searches for and clicks a deep model", async ({ page }) => {
+    const modelButton = page.getByTestId("model-selector");
+    await modelButton.click();
+
+    await page.getByPlaceholder("Search models...").fill("big-model-117");
+    await page.getByRole("option", { name: /Big Model 117/ }).click();
+
+    await expect(page.getByPlaceholder("Search models...")).not.toBeVisible();
+    await expect(modelButton).toContainText("Big Model 117");
+  });
+});
