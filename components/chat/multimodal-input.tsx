@@ -585,7 +585,7 @@ function PureMultimodalInput({
       </div>
 
       <PromptInput
-        className="[&>div]:rounded-xl [&>div]:border [&>div]:border-input [&>div]:bg-card [&>div]:shadow-[var(--shadow-composer)] [&>div]:transition-all [&>div]:duration-300 dark:[&>div]:border-white/10 dark:[&>div]:bg-white/[0.07] dark:[&>div]:focus-within:border-primary/30 dark:[&>div]:focus-within:bg-white/[0.09]"
+        className="[&>div]:rounded-xl [&>div]:border [&>div]:border-input [&>div]:bg-card [&>div]:shadow-[var(--shadow-composer)] [&>div]:backdrop-blur-xl [&>div]:transition-all [&>div]:duration-300 dark:[&>div]:border-white/10 dark:[&>div]:bg-white/[0.07] dark:[&>div]:focus-within:border-primary/30 dark:[&>div]:focus-within:bg-white/[0.09]"
         onSubmit={handlePromptSubmit}
       >
         {(attachments.length > 0 || uploadQueue.length > 0) && (
