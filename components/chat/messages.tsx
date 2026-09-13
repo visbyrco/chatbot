@@ -10,6 +10,7 @@ import { PreviewMessage, ThinkingMessage } from "./message";
 
 type MessagesProps = {
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
+  bottomClearance?: number;
   chatId: string;
   status: UseChatHelpers<ChatMessage>["status"];
   messages: ChatMessage[];
@@ -33,6 +34,7 @@ const OVERSCAN = 10;
 
 function PureMessages({
   addToolApprovalResponse,
+  bottomClearance = 0,
   chatId,
   status,
   messages,
@@ -160,7 +162,14 @@ function PureMessages({
         ref={messagesContainerRef}
         style={isArtifactVisible ? { scrollbarWidth: "none" } : undefined}
       >
-        <div className="mx-auto flex min-h-full min-w-0 max-w-4xl flex-col gap-6 px-4 pt-4 pb-8 md:gap-7 md:px-6 md:pt-10 md:pb-10">
+        <div
+          className="mx-auto flex min-h-full min-w-0 max-w-4xl flex-col gap-6 px-4 pt-4 pb-12 md:gap-7 md:px-6 md:pt-10 md:pb-14"
+          style={
+            bottomClearance > 0
+              ? { paddingBottom: bottomClearance + 24 }
+              : undefined
+          }
+        >
           {messages.length === 0 && !isLoading && (
             <div className="flex flex-1 items-center justify-center px-4 py-10">
               <Greeting />
@@ -219,7 +228,11 @@ function PureMessages({
         }`}
         initial={false}
         onClick={handleScrollToBottom}
-        style={{ x: "-50%" }}
+        style={
+          bottomClearance > 0
+            ? { bottom: bottomClearance + 12, x: "-50%" }
+            : { x: "-50%" }
+        }
         transition={{ damping: 28, stiffness: 420, type: "spring" }}
         type="button"
       >

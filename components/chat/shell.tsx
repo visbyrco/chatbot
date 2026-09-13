@@ -1,7 +1,13 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { forkChat } from "@/app/(chat)/actions";
 import { useActiveChat } from "@/hooks/use-active-chat";
@@ -60,6 +66,28 @@ export function ChatShell() {
     : undefined;
 
   const prevChatIdRef = useRef(chatId);
+  const [dockHeight, setDockHeight] = useState(0);
+  const dockRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (isReadonly) {
+      setDockHeight(0);
+      return;
+    }
+    const dock = dockRef.current;
+    if (!dock) {
+      return;
+    }
+    const updateHeight = () => {
+      const height = dock.offsetHeight;
+      setDockHeight((prev) => (prev === height ? prev : height));
+    };
+    updateHeight();
+    const resizeObserver = new ResizeObserver(updateHeight);
+    resizeObserver.observe(dock);
+    return () => resizeObserver.disconnect();
+  }, [isReadonly]);
+
   useEffect(() => {
     if (prevChatIdRef.current !== chatId) {
       prevChatIdRef.current = chatId;
@@ -139,6 +167,7 @@ export function ChatShell() {
               <MobileTopBar />
               <Messages
                 addToolApprovalResponse={addToolApprovalResponse}
+                bottomClearance={isReadonly ? 0 : dockHeight}
                 chatId={chatId}
                 isArtifactVisible={isArtifactVisible}
                 isLoading={isLoading}
@@ -152,32 +181,37 @@ export function ChatShell() {
                 status={status}
               />
 
-              <div className="sticky bottom-0 z-10 mx-auto flex w-full max-w-4xl gap-2 bg-transparent px-4 pt-2 pb-3 md:px-6 md:pb-4 md:pt-3">
-                {!isReadonly && (
-                  <MultimodalInput
-                    attachments={attachments}
-                    chatId={chatId}
-                    editingMessage={editingMessage}
-                    input={input}
-                    isLoading={isLoading}
-                    messages={messages}
-                    onCancelEdit={handleCancelEdit}
-                    onModelChange={setCurrentModelId}
-                    reasoningEffort={reasoningEffort}
-                    selectedModelId={currentModelId}
-                    selectedVisibilityType={visibilityType}
-                    sendMessage={
-                      editingMessage ? handleSendEditedMessage : sendMessage
-                    }
-                    setAttachments={setAttachments}
-                    setInput={setInput}
-                    setMessages={setMessages}
-                    setReasoningEffort={setReasoningEffort}
-                    status={status}
-                    stop={stop}
-                  />
-                )}
-              </div>
+              {!isReadonly && (
+                <div
+                  className="absolute inset-x-0 bottom-0 z-10 w-full"
+                  ref={dockRef}
+                >
+                  <div className="mx-auto flex w-full max-w-4xl gap-2 px-4 pt-2 pb-4 md:px-6 md:pt-3">
+                    <MultimodalInput
+                      attachments={attachments}
+                      chatId={chatId}
+                      editingMessage={editingMessage}
+                      input={input}
+                      isLoading={isLoading}
+                      messages={messages}
+                      onCancelEdit={handleCancelEdit}
+                      onModelChange={setCurrentModelId}
+                      reasoningEffort={reasoningEffort}
+                      selectedModelId={currentModelId}
+                      selectedVisibilityType={visibilityType}
+                      sendMessage={
+                        editingMessage ? handleSendEditedMessage : sendMessage
+                      }
+                      setAttachments={setAttachments}
+                      setInput={setInput}
+                      setMessages={setMessages}
+                      setReasoningEffort={setReasoningEffort}
+                      status={status}
+                      stop={stop}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
