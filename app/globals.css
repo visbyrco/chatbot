@@ -518,6 +518,21 @@
     -webkit-mask-composite: xor;
     mask-composite: exclude;
   }
+
+  .composer-dock-blur {
+    background: color-mix(in srgb, var(--background) 82%, transparent);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+  }
+
+  @supports not (
+      (backdrop-filter: blur(1px)) or
+      (-webkit-backdrop-filter: blur(1px))
+    ) {
+    .composer-dock-blur {
+      background: var(--background);
+    }
+  }
 }
 
 @utility divider-glass {

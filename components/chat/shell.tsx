@@ -186,7 +186,11 @@ export function ChatShell() {
                   className="absolute inset-x-0 bottom-0 z-10 w-full"
                   ref={dockRef}
                 >
-                  <div className="mx-auto flex w-full max-w-4xl gap-2 px-4 pt-2 pb-4 md:px-6 md:pt-3">
+                  <div
+                    aria-hidden
+                    className="composer-dock-blur pointer-events-none absolute inset-0"
+                  />
+                  <div className="relative mx-auto flex w-full max-w-4xl gap-2 px-4 pt-2 pb-4 md:px-6 md:pt-3">
                     <MultimodalInput
                       attachments={attachments}
                       chatId={chatId}

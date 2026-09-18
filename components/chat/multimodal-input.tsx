@@ -534,10 +534,7 @@ function PureMultimodalInput({
   );
 
   return (
-    <div
-      className={cn("relative flex w-full flex-col gap-4 fade-up", className)}
-      style={{ animationDelay: "100ms" }}
-    >
+    <div className={cn("relative flex w-full flex-col gap-4", className)}>
       {editingMessage && onCancelEdit ? (
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground font-manrope">
           <span>Editing message</span>
@@ -585,7 +582,7 @@ function PureMultimodalInput({
       </div>
 
       <PromptInput
-        className="[&>div]:rounded-xl [&>div]:border [&>div]:border-input [&>div]:bg-card/80 [&>div]:shadow-[var(--shadow-composer)] [&>div]:backdrop-blur-xl [&>div]:transition-all [&>div]:duration-300 [&>div]:supports-[backdrop-filter]:bg-card/70 dark:[&>div]:border-white/10 dark:[&>div]:bg-white/[0.07] dark:[&>div]:focus-within:border-primary/30 dark:[&>div]:focus-within:bg-white/[0.09]"
+        className="[&>div]:rounded-xl [&>div]:border [&>div]:border-input [&>div]:bg-card/80 [&>div]:shadow-[var(--shadow-composer)] [&>div]:backdrop-blur-xl [&>div]:transition-all [&>div]:duration-300 [&>div]:supports-[backdrop-filter]:bg-card/70 dark:[&>div]:border-white/10 dark:[&>div]:supports-[backdrop-filter]:bg-white/[0.07] dark:[&>div]:focus-within:border-primary/30 dark:[&>div]:supports-[backdrop-filter]:focus-within:bg-white/[0.09]"
         onSubmit={handlePromptSubmit}
       >
         {(attachments.length > 0 || uploadQueue.length > 0) && (
