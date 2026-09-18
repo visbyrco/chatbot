@@ -585,7 +585,7 @@ function PureMultimodalInput({
       </div>
 
       <PromptInput
-        className="[&>div]:rounded-xl [&>div]:border [&>div]:border-input [&>div]:bg-card/80 [&>div]:shadow-[var(--shadow-composer)] [&>div]:backdrop-blur-xl [&>div]:transition-all [&>div]:duration-300 [&>div]:supports-[backdrop-filter]:bg-card/70 dark:[&>div]:border-white/10 dark:[&>div]:bg-white/[0.07] dark:[&>div]:focus-within:border-primary/30 dark:[&>div]:focus-within:bg-white/[0.09]"
+        className="[&>div]:rounded-xl [&>div]:border [&>div]:border-input [&>div]:bg-card dark:[&>div]:bg-[#191c1e] [&>div]:shadow-[var(--shadow-composer)] [&>div]:backdrop-blur-xl [&>div]:[-webkit-backdrop-filter:blur(24px)] [&>div]:transition-all [&>div]:duration-300 [&>div]:supports-[backdrop-filter]:bg-card/70 [&>div]:supports-[-webkit-backdrop-filter]:bg-card/70 dark:[&>div]:supports-[backdrop-filter]:bg-white/[0.07] dark:[&>div]:supports-[-webkit-backdrop-filter]:bg-white/[0.07] dark:[&>div]:border-white/10 dark:[&>div]:focus-within:border-primary/30 dark:[&>div]:focus-within:bg-[#1e2123] dark:[&>div]:supports-[backdrop-filter]:focus-within:bg-white/[0.09] dark:[&>div]:supports-[-webkit-backdrop-filter]:focus-within:bg-white/[0.09]"
         onSubmit={handlePromptSubmit}
       >
         {(attachments.length > 0 || uploadQueue.length > 0) && (
