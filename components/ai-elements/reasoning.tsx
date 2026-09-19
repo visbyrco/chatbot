@@ -249,7 +249,10 @@ export const ReasoningContent = memo(
           ref={scrollRef}
           style={{ msOverflowStyle: "none", scrollbarWidth: "none" }}
         >
-          <ReasoningMarkdown {...(props as unknown as ReasoningMarkdownProps)}>
+          <ReasoningMarkdown
+            {...(props as unknown as ReasoningMarkdownProps)}
+            isAnimating={isStreaming}
+          >
             {children}
           </ReasoningMarkdown>
         </div>
