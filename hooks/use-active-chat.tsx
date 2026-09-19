@@ -165,7 +165,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     resumeStream,
     addToolApprovalResponse,
   } = useChat<ChatMessage>({
-    experimental_throttle: 100,
+    // Coarser ticks, not token by token. Words arrive in small phrase-sized
+    // batches while Streamdown's word-stagger animation smooths each reveal.
+    experimental_throttle: 200,
     generateId: generateUUID,
     id: chatId,
     messages: initialMessages,
