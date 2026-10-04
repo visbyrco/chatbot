@@ -262,9 +262,94 @@ function withTrailingPeriod(text: string): string {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
+type GatewayErrorInfo = {
+  type: string;
+  message: string;
+  model?: string;
+  replacement?: string;
+};
+
+/**
+ * Extract gateway-style structured errors (e.g. OpenCode Zen
+ * `{"error": {"type": "ModelDeprecated", ...}, "metadata": {...}}`)
+ * from AI SDK error wrappers, JSON-string bodies, or plain objects.
+ */
+function extractGatewayError(
+  error: unknown,
+  depth = 0
+): GatewayErrorInfo | null {
+  if (depth > MAX_DEPTH || error === null || error === undefined) {
+    return null;
+  }
+  if (typeof error === "string") {
+    const trimmed = error.trim();
+    if (
+      (trimmed.startsWith("{") || trimmed.startsWith("[")) &&
+      trimmed.length < MAX_BODY_PARSE_LENGTH
+    ) {
+      try {
+        return extractGatewayError(JSON.parse(trimmed), depth + 1);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+  if (!isRecord(error)) {
+    return null;
+  }
+  const nested = error.error;
+  if (isRecord(nested) && typeof nested.type === "string") {
+    const metadata = isRecord(error.metadata) ? error.metadata : null;
+    const model =
+      metadata && typeof metadata.model === "string"
+        ? metadata.model
+        : undefined;
+    const replacement =
+      metadata && typeof metadata.replacement === "string"
+        ? metadata.replacement
+        : undefined;
+    return {
+      message: typeof nested.message === "string" ? nested.message.trim() : "",
+      ...(model ? { model } : {}),
+      ...(replacement ? { replacement } : {}),
+      type: nested.type,
+    };
+  }
+  for (const key of [
+    "responseBody",
+    "data",
+    "response",
+    "body",
+    "cause",
+    "error",
+  ]) {
+    const found = extractGatewayError(error[key], depth + 1);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
 export function getStreamErrorMessage(error: unknown): string {
   if (isAbortError(error)) {
     return "Request was cancelled. Please try again.";
+  }
+
+  const gatewayError = extractGatewayError(error);
+  if (gatewayError?.type === "ModelDeprecated") {
+    const model = gatewayError.model ?? "This model";
+    if (gatewayError.replacement) {
+      return `${model} has been deprecated. Switch to ${gatewayError.replacement} in settings to keep chatting.`;
+    }
+    return `${model} has been deprecated. Pick another model in settings to keep chatting.`;
+  }
+  if (gatewayError?.type === "ModelProtocolUnsupported") {
+    const detail = gatewayError.message
+      ? ` ${withTrailingPeriod(gatewayError.message)}`
+      : "";
+    return `This model needs a different API than the one used.${detail} Try another model or update the app.`;
   }
 
   const status = getErrorStatus(error);

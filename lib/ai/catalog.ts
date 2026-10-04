@@ -23,6 +23,14 @@ export type CatalogModel = {
     reasoningEfforts?: string[];
   };
   pricing?: ModelPricing;
+  /**
+   * Per-model SDK override from models.dev (`model.provider.npm`).
+   * e.g. Muse Spark on opencode-go pins `@ai-sdk/openai`, whose default
+   * is the Responses API, while the provider default is chat completions.
+   */
+  npmOverride?: string;
+  /** Per-model API shape from models.dev (`model.provider.shape`). */
+  apiShape?: "responses" | "completions";
 };
 
 const LIVE_CATALOG_TTL_MS = 5 * 60 * 1000;
@@ -92,9 +100,11 @@ function providerToCatalogModels(p: Provider): CatalogModel[] {
   return Object.values(p.models)
     .filter((m) => m.status !== "deprecated")
     .map((m) => ({
+      apiShape: m.provider?.shape,
       capabilities: mapModelCapabilities(m),
       modelId: m.id,
       name: m.name,
+      npmOverride: m.provider?.npm,
       pricing: m.cost
         ? {
             cachedInput: m.cost.cache_read ?? null,

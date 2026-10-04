@@ -30,6 +30,7 @@ import { MultimodalInput } from "./multimodal-input";
 export function ChatShell() {
   const {
     chatId,
+    chatError,
     messages,
     setMessages,
     sendMessage,
@@ -168,6 +169,7 @@ export function ChatShell() {
               <Messages
                 addToolApprovalResponse={addToolApprovalResponse}
                 bottomClearance={isReadonly ? 0 : dockHeight}
+                chatError={chatError}
                 chatId={chatId}
                 isArtifactVisible={isArtifactVisible}
                 isLoading={isLoading}
