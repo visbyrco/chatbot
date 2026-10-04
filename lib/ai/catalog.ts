@@ -31,6 +31,8 @@ export type CatalogModel = {
   npmOverride?: string;
   /** Per-model API shape from models.dev (`model.provider.shape`). */
   apiShape?: "responses" | "completions";
+  /** Per-model max output tokens from models.dev (`model.limit.output`). */
+  outputLimit?: number;
 };
 
 const LIVE_CATALOG_TTL_MS = 5 * 60 * 1000;
@@ -105,6 +107,7 @@ function providerToCatalogModels(p: Provider): CatalogModel[] {
       modelId: m.id,
       name: m.name,
       npmOverride: m.provider?.npm,
+      outputLimit: m.limit?.output ?? undefined,
       pricing: m.cost
         ? {
             cachedInput: m.cost.cache_read ?? null,
