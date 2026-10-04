@@ -11,9 +11,10 @@ import {
 } from "@/lib/ai/models";
 import { titlePrompt } from "@/lib/ai/prompts";
 import {
+  buildReasoningCallOptions,
   getCustomModelRouting,
   getLanguageModel,
-  isResponsesApiEffort,
+  type ReasoningCallOptions,
 } from "@/lib/ai/providers";
 import { usesMockAuthNow } from "@/lib/constants";
 import {
@@ -116,44 +117,35 @@ export async function generateTitleFromUserMessage({
     // and honor the reasoning effort sent with the chat request.
     const effort = usesTitleModel ? titleReasoningEffort : reasoningEffort;
 
-    let reasoningValue:
-      | "none"
-      | "minimal"
-      | "low"
-      | "medium"
-      | "high"
-      | "xhigh"
-      | undefined;
-    let providerOptions:
-      | Record<string, { reasoningEffort: string }>
-      | undefined;
+    let reasoningValue: ReasoningCallOptions["reasoning"];
+    let providerOptions: ReasoningCallOptions["providerOptions"];
+    let titleMaxOutputTokens: number | undefined;
 
-    if (effort && effort !== "default") {
-      const capabilities = userId
-        ? await getCustomCapabilitiesForUser(userId)
-        : undefined;
-      const isReasoningModel = capabilities?.[modelId]?.reasoning === true;
+    const capabilities = userId
+      ? await getCustomCapabilitiesForUser(userId)
+      : undefined;
+    const isReasoningModel = capabilities?.[modelId]?.reasoning === true;
 
-      if (isReasoningModel) {
-        if (effort !== "max") {
-          reasoningValue = effort;
-        }
-        const providerId = modelId.split("/")[0].slice(7);
-        const provider = await getCustomProviderById({ id: providerId });
-        if (provider) {
-          const modelName = modelId.split("/").slice(1).join("/");
-          const routing = await getCustomModelRouting(provider, modelName);
-          const sendEffort =
-            routing.sendReasoningEffort &&
-            (!routing.useResponsesApi || isResponsesApiEffort(effort));
-          if (sendEffort) {
-            providerOptions = {
-              [routing.providerOptionsKey]: {
-                reasoningEffort: effort,
-              },
-            };
-          }
-        }
+    // Always resolve call options for reasoning models, even at the default
+    // effort: Responses titles need `reasoningSummary`/`forceReasoning` and
+    // Anthropic titles need the catalog `maxOutputTokens` cap.
+    if (isReasoningModel) {
+      const providerId = modelId.split("/")[0].slice(7);
+      const provider = await getCustomProviderById({ id: providerId });
+      if (provider) {
+        const modelName = modelId.split("/").slice(1).join("/");
+        const routing = await getCustomModelRouting(provider, modelName);
+        const reasoningCall = buildReasoningCallOptions(routing, {
+          effort,
+          isReasoningModel,
+        });
+        ({
+          maxOutputTokens: titleMaxOutputTokens,
+          providerOptions,
+          reasoning: reasoningValue,
+        } = reasoningCall);
+      } else if (effort && effort !== "default" && effort !== "max") {
+        reasoningValue = effort;
       }
     }
 
@@ -163,6 +155,9 @@ export async function generateTitleFromUserMessage({
       prompt: getTextFromMessage(message),
       ...(reasoningValue ? { reasoning: reasoningValue } : {}),
       ...(providerOptions ? { providerOptions } : {}),
+      ...(titleMaxOutputTokens
+        ? { maxOutputTokens: titleMaxOutputTokens }
+        : {}),
     });
 
     return text

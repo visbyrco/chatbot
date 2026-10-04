@@ -24,9 +24,9 @@ import { calculateUsageCost, getModelPricing } from "@/lib/ai/pricing";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getStreamErrorMessage } from "@/lib/ai/provider-errors";
 import {
+  buildReasoningCallOptions,
   getCustomModelRouting,
   getLanguageModel,
-  isResponsesApiEffort,
 } from "@/lib/ai/providers";
 import { editFile } from "@/lib/ai/tools/edit-file";
 import { fetchUrl } from "@/lib/ai/tools/fetch-url";
@@ -480,37 +480,17 @@ export async function POST(request: Request) {
         };
 
         const routing = await getCustomModelRouting(provider, modelIdPart);
-        const { providerOptionsKey } = routing;
-        // Responses API models take effort under the `openai` key, but
-        // only for effort values that API accepts.
-        const sendReasoningEffort =
-          routing.sendReasoningEffort &&
-          (!routing.useResponsesApi ||
-            (reasoningEffort !== undefined &&
-              isResponsesApiEffort(reasoningEffort)));
-
-        // The unified `reasoning` option supports a fixed set of values.
-        // Provider-specific values like "max" must be sent through
-        // `providerOptions` instead.
-        const reasoningValue =
-          isReasoningModel &&
-          reasoningEffort &&
-          reasoningEffort !== "default" &&
-          reasoningEffort !== "max"
-            ? reasoningEffort
-            : undefined;
-
-        const providerOptions =
-          isReasoningModel &&
-          reasoningEffort &&
-          reasoningEffort !== "default" &&
-          sendReasoningEffort
-            ? {
-                [providerOptionsKey]: {
-                  reasoningEffort,
-                },
-              }
-            : undefined;
+        // Per-SDK reasoning mapping (effort key, summaries, thinking, token
+        // caps) is centralized so streaming and title generation agree.
+        const reasoningCall = buildReasoningCallOptions(routing, {
+          effort: reasoningEffort,
+          isReasoningModel,
+        });
+        const {
+          maxOutputTokens,
+          providerOptions,
+          reasoning: reasoningValue,
+        } = reasoningCall;
 
         // Explicit cancel controller: Stop button aborts via /api/chat/[id]/cancel,
         // while tab-close (request.signal abort) is intentionally ignored so
@@ -559,6 +539,7 @@ export async function POST(request: Request) {
             userAiContext,
           }),
           messages: modelMessages,
+          ...(maxOutputTokens ? { maxOutputTokens } : {}),
           model: await getLanguageModel(chatModel, { sessionId: id }),
           onAbort() {
             stopWaitingStatus();

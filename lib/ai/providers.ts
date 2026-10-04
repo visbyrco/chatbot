@@ -1,7 +1,11 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModelV4 } from "@ai-sdk/provider";
+import type {
+  JSONValue,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+} from "@ai-sdk/provider";
 import { customProvider as aiCustomProvider } from "ai";
 import type { CustomProvider } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
@@ -225,43 +229,52 @@ export function isOpenAICompatibleProvider(
 export type CustomModelRouting = {
   /** True when the model only works through the Responses API. */
   useResponsesApi: boolean;
+  /** True when the model only works through the Anthropic Messages API. */
+  useAnthropicApi: boolean;
   /**
    * providerOptions namespace for reasoning effort: `"openai"` for
-   * Responses API models, otherwise the provider-specific key.
+   * Responses API models, `"anthropic"` for Messages API models,
+   * otherwise the provider-specific key.
    */
   providerOptionsKey: string;
   /** Whether to forward reasoning effort via provider options. */
   sendReasoningEffort: boolean;
+  /**
+   * Explicit max output tokens for SDKs that cap unknown models
+   * (the Anthropic SDK limits unrecognized ids to 4096 tokens).
+   */
+  maxOutputTokens?: number;
 };
 
-// Reasoning efforts the OpenAI Responses API accepts. Anything else
-// (e.g. the generic "max") must not be sent under the `openai` key.
-const OPENAI_RESPONSES_EFFORTS = new Set([
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-]);
-
-export function isResponsesApiEffort(effort: string): boolean {
-  return OPENAI_RESPONSES_EFFORTS.has(effort);
-}
+/**
+ * Efforts the Anthropic SDK accepts (`effort` field). Anything else must
+ * be mapped (e.g. `"minimal"` has no Anthropic equivalent) or dropped so
+ * the model's server-side default applies.
+ */
+const ANTHROPIC_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 function isOpenAiSdkNpm(npm: string | undefined): boolean {
   return npm === "@ai-sdk/openai";
+}
+
+function isAnthropicSdkNpm(npm: string | undefined): boolean {
+  return npm === "@ai-sdk/anthropic";
 }
 
 /**
  * Resolve how a specific model must be driven, honoring per-model
  * overrides from the models.dev catalog (`model.provider.npm/shape`).
  *
- * Some models reject chat completions entirely: Muse Spark on OpenCode
- * Zen answers `ModelProtocolUnsupported` on `/chat/completions` and must
- * go through the Responses API (`@ai-sdk/openai` default), which is what
- * the catalog's per-model `npm: "@ai-sdk/openai"` override encodes.
- * Falls back to provider-level routing when the catalog has no override
- * (or is unreachable), so unknown models keep working as before.
+ * OpenCode Go serves each model on exactly one endpoint (see
+ * https://opencode.ai/docs/go/#endpoints): Responses-only models
+ * (e.g. Muse Spark) reject `/chat/completions` with
+ * `ModelProtocolUnsupported` and must go through the Responses API
+ * (`@ai-sdk/openai` default, `…/v1/responses`), while Anthropic-native
+ * models (e.g. MiniMax, Qwen) must go through the Messages API
+ * (`@ai-sdk/anthropic`, `…/v1/messages`). The catalog's per-model `npm`
+ * override encodes which SDK — and therefore which endpoint — each model
+ * needs. Falls back to provider-level routing when the catalog has no
+ * override (or is unreachable), so unknown models keep working as before.
  */
 export async function getCustomModelRouting(
   provider: Pick<CustomProvider, "type" | "providerKey" | "name">,
@@ -270,6 +283,7 @@ export async function getCustomModelRouting(
   const fallback: CustomModelRouting = {
     providerOptionsKey: getCustomProviderOptionsKey(provider),
     sendReasoningEffort: isOpenAICompatibleProvider(provider),
+    useAnthropicApi: false,
     useResponsesApi: false,
   };
   if (provider.type !== "openai" || !provider.providerKey) {
@@ -288,11 +302,21 @@ export async function getCustomModelRouting(
     return {
       providerOptionsKey: "openai",
       sendReasoningEffort: true,
+      useAnthropicApi: false,
       useResponsesApi: true,
     };
   }
   if (catalogModel.apiShape === "completions") {
     return fallback;
+  }
+  if (isAnthropicSdkNpm(catalogModel.npmOverride)) {
+    return {
+      maxOutputTokens: catalogModel.outputLimit,
+      providerOptionsKey: "anthropic",
+      sendReasoningEffort: true,
+      useAnthropicApi: true,
+      useResponsesApi: false,
+    };
   }
   if (
     isOpenAiSdkNpm(catalogModel.npmOverride) &&
@@ -301,10 +325,145 @@ export async function getCustomModelRouting(
     return {
       providerOptionsKey: "openai",
       sendReasoningEffort: true,
+      useAnthropicApi: false,
       useResponsesApi: true,
     };
   }
   return fallback;
+}
+
+export type ReasoningCallOptions = {
+  /** Value for the unified `reasoning` option, if any. */
+  reasoning?: LanguageModelV4CallOptions["reasoning"];
+  /** Provider options carrying effort/summary flags, if any. */
+  providerOptions?: Record<string, Record<string, JSONValue>>;
+  /** Explicit max output tokens, if the route requires it. */
+  maxOutputTokens?: number;
+};
+
+/** Values the unified `reasoning` call option accepts. */
+const UNIFIED_REASONING_VALUES: ReadonlySet<string> = new Set([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+
+/**
+ * Effort values callers may pass. The chat route validates these via schema,
+ * but title generation reads them straight from cookies, so unknown strings
+ * are treated as unset (server default) rather than forwarded to providers.
+ */
+const KNOWN_EFFORTS: ReadonlySet<string> = new Set([
+  ...UNIFIED_REASONING_VALUES,
+  "max",
+]);
+
+/**
+ * Build the reasoning-related call options for `streamText`/`generateText`
+ * from a resolved route. Centralizes the per-SDK mapping so chat streaming
+ * and title generation stay consistent:
+ *
+ * - Responses API (`openai` key): the SDK only recognizes reasoning models
+ *   by id (`o*`/`gpt-5+`), so third-party models (Muse Spark, Grok) need
+ *   `forceReasoning` or their effort/summary flags are silently dropped and
+ *   no reasoning summaries come back. Summaries are always requested (even
+ *   at the default effort) so reasoning output isn't lost.
+ * - Messages API (`anthropic` key): effort maps to `effort`, `"none"`
+ *   disables thinking, and the unified `reasoning` option is left unset —
+ *   the SDK would otherwise derive a thinking budget from its 4096-token
+ *   fallback for unrecognized ids. `maxOutputTokens` comes from the catalog
+ *   for the same reason.
+ * - Chat completions: `reasoningEffort` passes through under the
+ *   provider-specific key.
+ */
+export function buildReasoningCallOptions(
+  routing: CustomModelRouting,
+  opts: { isReasoningModel: boolean; effort?: string }
+): ReasoningCallOptions {
+  if (!opts.isReasoningModel) {
+    return {};
+  }
+  const rawEffort =
+    opts.effort && opts.effort !== "default" ? opts.effort : undefined;
+  // Drop unrecognized values (e.g. tampered cookies): the Responses
+  // `reasoningEffort` field is free-string, so the SDK would forward
+  // garbage to the endpoint. "max"/"none" are kept — the SDK accepts both
+  // and Luna-class models list them in the live catalog.
+  const effort =
+    rawEffort && KNOWN_EFFORTS.has(rawEffort) ? rawEffort : undefined;
+  // The unified option rejects provider-specific values like "max".
+  const unifiedReasoning =
+    effort && effort !== "max" && UNIFIED_REASONING_VALUES.has(effort)
+      ? (effort as LanguageModelV4CallOptions["reasoning"])
+      : undefined;
+
+  if (routing.useResponsesApi) {
+    return {
+      providerOptions: {
+        openai: {
+          ...(effort ? { reasoningEffort: effort } : {}),
+          // Always request summaries: without this the API returns no
+          // reasoning text at the default effort. "none" disables reasoning
+          // entirely, so no summary is requested then.
+          ...(effort === "none" ? {} : { reasoningSummary: "auto" }),
+          // Third-party Responses models (Muse Spark, Grok) are unknown to
+          // the SDK's reasoning-model allowlist; without this flag the SDK
+          // drops effort/summary and returns no reasoning output.
+          forceReasoning: true,
+        },
+      },
+      reasoning: unifiedReasoning,
+    };
+  }
+
+  if (routing.useAnthropicApi) {
+    // Omit the cap when the catalog has no limit: callers fall back to the
+    // SDK default either way, and an explicit `undefined` key would only
+    // obscure that.
+    const cap = routing.maxOutputTokens
+      ? { maxOutputTokens: routing.maxOutputTokens }
+      : {};
+    if (!effort) {
+      return cap;
+    }
+    if (effort === "none") {
+      return {
+        ...cap,
+        providerOptions: {
+          anthropic: { thinking: { type: "disabled" } },
+        },
+      };
+    }
+    // The Anthropic SDK has no "minimal" level; closest equivalent.
+    const mappedEffort = effort === "minimal" ? "low" : effort;
+    if (!ANTHROPIC_EFFORTS.has(mappedEffort)) {
+      return cap;
+    }
+    return {
+      ...cap,
+      providerOptions: {
+        anthropic: { effort: mappedEffort },
+      },
+    };
+  }
+
+  if (!effort) {
+    return {};
+  }
+  // The unified option is independent of the provider-options gate: e.g.
+  // provider-level `@ai-sdk/openai` setups resolve effort from it.
+  if (!routing.sendReasoningEffort) {
+    return { reasoning: unifiedReasoning };
+  }
+  return {
+    providerOptions: {
+      [routing.providerOptionsKey]: { reasoningEffort: effort },
+    },
+    reasoning: unifiedReasoning,
+  };
 }
 
 async function createModelFromProvider(
@@ -319,6 +478,17 @@ async function createModelFromProvider(
 
   if (provider.type === "openai") {
     const routing = await getCustomModelRouting(provider, modelName);
+
+    if (routing.useAnthropicApi) {
+      // Anthropic-native models (e.g. MiniMax, Qwen on OpenCode Zen) only
+      // serve the Messages API (`…/v1/messages`); the SDK appends that path
+      // to the shared base URL.
+      return createAnthropic({
+        apiKey,
+        baseURL: provider.baseURL,
+        ...(goHeaders ? { headers: goHeaders } : {}),
+      }).languageModel(modelName);
+    }
 
     if (routing.useResponsesApi) {
       // Responses-only models (e.g. Muse Spark on OpenCode Zen) reject

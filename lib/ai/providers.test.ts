@@ -43,7 +43,28 @@ describe("getCustomModelRouting", () => {
     ).resolves.toEqual({
       providerOptionsKey: "openai",
       sendReasoningEffort: true,
+      useAnthropicApi: false,
       useResponsesApi: true,
+    });
+  });
+
+  it("routes per-model @ai-sdk/anthropic overrides to the Messages API", async () => {
+    const { getCustomModelRouting } = await importRouting(
+      {
+        apiShape: undefined,
+        npmOverride: "@ai-sdk/anthropic",
+        outputLimit: 131_072,
+      },
+      "@ai-sdk/openai-compatible"
+    );
+    await expect(
+      getCustomModelRouting({ ...ZEN_PROVIDER }, "minimax-m3")
+    ).resolves.toEqual({
+      maxOutputTokens: 131_072,
+      providerOptionsKey: "anthropic",
+      sendReasoningEffort: true,
+      useAnthropicApi: true,
+      useResponsesApi: false,
     });
   });
 
@@ -67,6 +88,7 @@ describe("getCustomModelRouting", () => {
     ).resolves.toEqual({
       providerOptionsKey: "opencode-go",
       sendReasoningEffort: true,
+      useAnthropicApi: false,
       useResponsesApi: false,
     });
   });
@@ -81,6 +103,7 @@ describe("getCustomModelRouting", () => {
     ).resolves.toEqual({
       providerOptionsKey: "opencode-go",
       sendReasoningEffort: true,
+      useAnthropicApi: false,
       useResponsesApi: false,
     });
   });
@@ -95,6 +118,7 @@ describe("getCustomModelRouting", () => {
     ).resolves.toEqual({
       providerOptionsKey: "opencode-go",
       sendReasoningEffort: false,
+      useAnthropicApi: false,
       useResponsesApi: false,
     });
   });
@@ -114,6 +138,7 @@ describe("getCustomModelRouting", () => {
     ).resolves.toEqual({
       providerOptionsKey: "anthropic",
       sendReasoningEffort: false,
+      useAnthropicApi: false,
       useResponsesApi: false,
     });
   });
@@ -132,26 +157,257 @@ describe("getCustomModelRouting", () => {
     ).resolves.toEqual({
       providerOptionsKey: "opencode-go",
       sendReasoningEffort: true,
+      useAnthropicApi: false,
       useResponsesApi: false,
     });
   });
 });
 
-describe("isResponsesApiEffort", () => {
+describe("buildReasoningCallOptions", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
   });
 
-  it("accepts the OpenAI effort levels", async () => {
+  async function importHelper() {
     mockCatalog(undefined);
-    const { isResponsesApiEffort } = await import("./providers");
-    for (const effort of ["minimal", "low", "medium", "high", "xhigh"]) {
-      expect(isResponsesApiEffort(effort)).toBe(true);
-    }
-    for (const effort of ["max", "default", "none", ""]) {
-      expect(isResponsesApiEffort(effort)).toBe(false);
-    }
+    return await import("./providers");
+  }
+
+  const responsesRoute = {
+    providerOptionsKey: "openai",
+    sendReasoningEffort: true,
+    useAnthropicApi: false,
+    useResponsesApi: true,
+  } as const;
+
+  const anthropicRoute = {
+    maxOutputTokens: 131_072,
+    providerOptionsKey: "anthropic",
+    sendReasoningEffort: true,
+    useAnthropicApi: true,
+    useResponsesApi: false,
+  } as const;
+
+  const chatRoute = {
+    providerOptionsKey: "opencode-go",
+    sendReasoningEffort: true,
+    useAnthropicApi: false,
+    useResponsesApi: false,
+  } as const;
+
+  it("returns no options for non-reasoning models", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    expect(
+      buildReasoningCallOptions(responsesRoute, {
+        effort: "high",
+        isReasoningModel: false,
+      })
+    ).toEqual({});
+  });
+
+  it("always requests Responses summaries, even at the default effort", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    expect(
+      buildReasoningCallOptions(responsesRoute, {
+        effort: "default",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: {
+        openai: { forceReasoning: true, reasoningSummary: "auto" },
+      },
+      reasoning: undefined,
+    });
+    expect(
+      buildReasoningCallOptions(responsesRoute, {
+        effort: undefined,
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: {
+        openai: { forceReasoning: true, reasoningSummary: "auto" },
+      },
+      reasoning: undefined,
+    });
+  });
+
+  it("forces reasoning-model handling for third-party Responses models", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    // Without forceReasoning the OpenAI SDK drops effort/summary for ids it
+    // does not recognize (Muse Spark, Grok) and no summaries come back.
+    expect(
+      buildReasoningCallOptions(responsesRoute, {
+        effort: "high",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: {
+        openai: {
+          forceReasoning: true,
+          reasoningEffort: "high",
+          reasoningSummary: "auto",
+        },
+      },
+      reasoning: "high",
+    });
+  });
+
+  it("omits the summary when Responses reasoning is disabled", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    expect(
+      buildReasoningCallOptions(responsesRoute, {
+        effort: "none",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: {
+        openai: { forceReasoning: true, reasoningEffort: "none" },
+      },
+      reasoning: "none",
+    });
+  });
+
+  it("forwards Responses max effort literally", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    // Luna-class models list "max" in the live catalog; the Responses
+    // `reasoningEffort` field is free-string so the SDK passes it through.
+    expect(
+      buildReasoningCallOptions(responsesRoute, {
+        effort: "max",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: {
+        openai: {
+          forceReasoning: true,
+          reasoningEffort: "max",
+          reasoningSummary: "auto",
+        },
+      },
+      reasoning: undefined,
+    });
+  });
+
+  it("drops unrecognized effort values", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    // Title generation reads effort straight from cookies, bypassing the
+    // chat route's schema validation.
+    expect(
+      buildReasoningCallOptions(responsesRoute, {
+        effort: "turbo",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: {
+        openai: { forceReasoning: true, reasoningSummary: "auto" },
+      },
+      reasoning: undefined,
+    });
+    expect(
+      buildReasoningCallOptions(chatRoute, {
+        effort: "turbo",
+        isReasoningModel: true,
+      })
+    ).toEqual({});
+  });
+
+  it("maps efforts to the Anthropic Messages API", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    expect(
+      buildReasoningCallOptions(anthropicRoute, {
+        effort: "high",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      maxOutputTokens: 131_072,
+      providerOptions: { anthropic: { effort: "high" } },
+      reasoning: undefined,
+    });
+    expect(
+      buildReasoningCallOptions(anthropicRoute, {
+        effort: "none",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      maxOutputTokens: 131_072,
+      providerOptions: { anthropic: { thinking: { type: "disabled" } } },
+      reasoning: undefined,
+    });
+    // No effort: server default applies, but the token cap is still needed.
+    expect(
+      buildReasoningCallOptions(anthropicRoute, {
+        effort: "default",
+        isReasoningModel: true,
+      })
+    ).toEqual({ maxOutputTokens: 131_072 });
+  });
+
+  it("passes chat-completion efforts through under the provider key", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    expect(
+      buildReasoningCallOptions(chatRoute, {
+        effort: "high",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: { "opencode-go": { reasoningEffort: "high" } },
+      reasoning: "high",
+    });
+    expect(
+      buildReasoningCallOptions(chatRoute, {
+        effort: "max",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: { "opencode-go": { reasoningEffort: "max" } },
+      reasoning: undefined,
+    });
+    expect(
+      buildReasoningCallOptions(chatRoute, {
+        effort: "default",
+        isReasoningModel: true,
+      })
+    ).toEqual({});
+  });
+
+  it("keeps unified reasoning when provider options are disabled", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    // Provider-level `@ai-sdk/openai` setups resolve effort from the unified
+    // option, so it must survive `sendReasoningEffort: false`.
+    const openaiChatRoute = {
+      ...chatRoute,
+      providerOptionsKey: "openai",
+      sendReasoningEffort: false,
+    } as const;
+    expect(
+      buildReasoningCallOptions(openaiChatRoute, {
+        effort: "high",
+        isReasoningModel: true,
+      })
+    ).toEqual({ reasoning: "high" });
+  });
+
+  it("omits the token cap when the catalog has no limit", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    const noLimitRoute = {
+      ...anthropicRoute,
+      maxOutputTokens: undefined,
+    } as const;
+    const noEffort = buildReasoningCallOptions(noLimitRoute, {
+      effort: "default",
+      isReasoningModel: true,
+    });
+    expect(noEffort).toEqual({});
+    expect("maxOutputTokens" in noEffort).toBe(false);
+    expect(
+      buildReasoningCallOptions(noLimitRoute, {
+        effort: "high",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: { anthropic: { effort: "high" } },
+    });
   });
 });
 
@@ -213,6 +469,17 @@ describe("getLanguageModel construction", () => {
     );
     expect(model?.modelId).toBe("muse-spark-1.3-contributor");
     expect(model?.provider).toBe("openai.responses");
+  });
+
+  it("builds Messages API models for per-model anthropic overrides", async () => {
+    const { getLanguageModel } = await importWithProvider({
+      apiShape: undefined,
+      npmOverride: "@ai-sdk/anthropic",
+      outputLimit: 131_072,
+    });
+    const model = await getLanguageModel("custom-p1/minimax-m3");
+    expect(model?.modelId).toBe("minimax-m3");
+    expect(model?.provider).toBe("anthropic.messages");
   });
 
   it("builds chat-completion models without an override", async () => {
