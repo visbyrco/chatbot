@@ -24,9 +24,9 @@ import { calculateUsageCost, getModelPricing } from "@/lib/ai/pricing";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import { getStreamErrorMessage } from "@/lib/ai/provider-errors";
 import {
-  getCustomProviderOptionsKey,
+  getCustomModelRouting,
   getLanguageModel,
-  isOpenAICompatibleProvider,
+  isResponsesApiEffort,
 } from "@/lib/ai/providers";
 import { editFile } from "@/lib/ai/tools/edit-file";
 import { fetchUrl } from "@/lib/ai/tools/fetch-url";
@@ -479,8 +479,15 @@ export async function POST(request: Request) {
           clearHealthCheckTimer();
         };
 
-        const providerOptionsKey = getCustomProviderOptionsKey(provider);
-        const isOpenAICompatible = isOpenAICompatibleProvider(provider);
+        const routing = await getCustomModelRouting(provider, modelIdPart);
+        const { providerOptionsKey } = routing;
+        // Responses API models take effort under the `openai` key, but
+        // only for effort values that API accepts.
+        const sendReasoningEffort =
+          routing.sendReasoningEffort &&
+          (!routing.useResponsesApi ||
+            (reasoningEffort !== undefined &&
+              isResponsesApiEffort(reasoningEffort)));
 
         // The unified `reasoning` option supports a fixed set of values.
         // Provider-specific values like "max" must be sent through
@@ -497,7 +504,7 @@ export async function POST(request: Request) {
           isReasoningModel &&
           reasoningEffort &&
           reasoningEffort !== "default" &&
-          isOpenAICompatible
+          sendReasoningEffort
             ? {
                 [providerOptionsKey]: {
                   reasoningEffort,
@@ -579,7 +586,7 @@ export async function POST(request: Request) {
             });
           },
           onError({ error }: { error: unknown }) {
-            console.error("streamText error:", error);
+            console.error("streamText error:", { chatId: id, error });
             lastStreamError = error;
             stopWaitingStatus();
             if (redisPoll) {
@@ -828,7 +835,7 @@ export async function POST(request: Request) {
         );
       },
       onError: (error: unknown) => {
-        console.error("createUIMessageStream error:", error);
+        console.error("createUIMessageStream error:", { chatId: id, error });
         return getStreamErrorMessage(lastStreamError ?? error);
       },
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,

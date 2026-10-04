@@ -1,16 +1,19 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { motion } from "framer-motion";
-import { ArrowDownIcon } from "lucide-react";
+import { ArrowDownIcon, RotateCcwIcon, TriangleAlertIcon } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMessages } from "@/hooks/use-messages";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Button } from "../ui/button";
 import { Greeting } from "./greeting";
+import { CopyIcon } from "./icons";
 import { PreviewMessage, ThinkingMessage } from "./message";
 
 type MessagesProps = {
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
   bottomClearance?: number;
+  chatError?: Error;
   chatId: string;
   status: UseChatHelpers<ChatMessage>["status"];
   messages: ChatMessage[];
@@ -24,6 +27,69 @@ type MessagesProps = {
   onForkMessage?: (message: ChatMessage) => void;
 };
 
+function ChatErrorCard({
+  chatId,
+  error,
+  modelId,
+  onRetry,
+}: {
+  chatId: string;
+  error: Error;
+  modelId: string;
+  onRetry: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const message = error.message || "The request failed without details.";
+  const details = useMemo(
+    () =>
+      [
+        `Chat: ${chatId}`,
+        `Model: ${modelId || "unknown"}`,
+        `Time: ${new Date().toISOString()}`,
+        `Error: ${message}`,
+      ].join("\n"),
+    [chatId, modelId, message]
+  );
+  const handleCopy = useCallback(() => {
+    const done = () => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(details).then(done, () => undefined);
+    }
+  }, [details]);
+
+  return (
+    <div
+      className="rounded-lg border border-error/20 bg-error/10 p-4 text-error"
+      data-testid="chat-error"
+      role="alert"
+    >
+      <div className="flex items-center gap-2 font-medium">
+        <TriangleAlertIcon className="size-4 shrink-0" />
+        Couldn&apos;t get a response
+      </div>
+      <p className="mt-2 text-sm leading-6 break-words text-foreground">
+        {message}
+      </p>
+      {modelId ? (
+        <p className="mt-1 text-xs text-muted-foreground">Model: {modelId}</p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button onClick={onRetry} size="sm" type="button" variant="outline">
+          <RotateCcwIcon className="size-3.5" />
+          Retry
+        </Button>
+        <Button onClick={handleCopy} size="sm" type="button" variant="ghost">
+          <CopyIcon size={14} />
+          {copied ? "Copied" : "Copy details"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // Fixed estimate: lightweight heuristic for 500+ message windowing.
 // It drifts for variable-height content (code blocks, images, tool outputs).
 // For precise virtualization, replace with dynamic measurement
@@ -35,6 +101,7 @@ const OVERSCAN = 10;
 function PureMessages({
   addToolApprovalResponse,
   bottomClearance = 0,
+  chatError,
   chatId,
   status,
   messages,
@@ -43,7 +110,7 @@ function PureMessages({
   isReadonly,
   isArtifactVisible,
   isLoading,
-  selectedModelId: _selectedModelId,
+  selectedModelId,
   onEditMessage,
   onForkMessage,
 }: MessagesProps) {
@@ -206,6 +273,15 @@ function PureMessages({
 
           {status === "submitted" && messages.at(-1)?.role !== "assistant" && (
             <ThinkingMessage />
+          )}
+
+          {status === "error" && chatError && (
+            <ChatErrorCard
+              chatId={chatId}
+              error={chatError}
+              modelId={selectedModelId}
+              onRetry={regenerate}
+            />
           )}
 
           <div

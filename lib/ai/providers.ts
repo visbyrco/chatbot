@@ -7,7 +7,7 @@ import type { CustomProvider } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import { isTestEnvironmentNow } from "../constants";
 import { getCustomProviderById } from "../db/queries";
-import { getCatalogProvider } from "./catalog";
+import { getCatalogProvider, getLiveCatalogModel } from "./catalog";
 import { decrypt } from "./encryption";
 
 function isClerkConfigured(): boolean {
@@ -222,17 +222,115 @@ export function isOpenAICompatibleProvider(
   );
 }
 
-function createModelFromProvider(
+export type CustomModelRouting = {
+  /** True when the model only works through the Responses API. */
+  useResponsesApi: boolean;
+  /**
+   * providerOptions namespace for reasoning effort: `"openai"` for
+   * Responses API models, otherwise the provider-specific key.
+   */
+  providerOptionsKey: string;
+  /** Whether to forward reasoning effort via provider options. */
+  sendReasoningEffort: boolean;
+};
+
+// Reasoning efforts the OpenAI Responses API accepts. Anything else
+// (e.g. the generic "max") must not be sent under the `openai` key.
+const OPENAI_RESPONSES_EFFORTS = new Set([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+
+export function isResponsesApiEffort(effort: string): boolean {
+  return OPENAI_RESPONSES_EFFORTS.has(effort);
+}
+
+function isOpenAiSdkNpm(npm: string | undefined): boolean {
+  return npm === "@ai-sdk/openai";
+}
+
+/**
+ * Resolve how a specific model must be driven, honoring per-model
+ * overrides from the models.dev catalog (`model.provider.npm/shape`).
+ *
+ * Some models reject chat completions entirely: Muse Spark on OpenCode
+ * Zen answers `ModelProtocolUnsupported` on `/chat/completions` and must
+ * go through the Responses API (`@ai-sdk/openai` default), which is what
+ * the catalog's per-model `npm: "@ai-sdk/openai"` override encodes.
+ * Falls back to provider-level routing when the catalog has no override
+ * (or is unreachable), so unknown models keep working as before.
+ */
+export async function getCustomModelRouting(
+  provider: Pick<CustomProvider, "type" | "providerKey" | "name">,
+  modelName: string
+): Promise<CustomModelRouting> {
+  const fallback: CustomModelRouting = {
+    providerOptionsKey: getCustomProviderOptionsKey(provider),
+    sendReasoningEffort: isOpenAICompatibleProvider(provider),
+    useResponsesApi: false,
+  };
+  if (provider.type !== "openai" || !provider.providerKey) {
+    return fallback;
+  }
+  let catalogModel: Awaited<ReturnType<typeof getLiveCatalogModel>>;
+  try {
+    catalogModel = await getLiveCatalogModel(provider.providerKey, modelName);
+  } catch {
+    return fallback;
+  }
+  if (!catalogModel) {
+    return fallback;
+  }
+  if (catalogModel.apiShape === "responses") {
+    return {
+      providerOptionsKey: "openai",
+      sendReasoningEffort: true,
+      useResponsesApi: true,
+    };
+  }
+  if (catalogModel.apiShape === "completions") {
+    return fallback;
+  }
+  if (
+    isOpenAiSdkNpm(catalogModel.npmOverride) &&
+    getCustomProviderSdk(provider) !== "openai"
+  ) {
+    return {
+      providerOptionsKey: "openai",
+      sendReasoningEffort: true,
+      useResponsesApi: true,
+    };
+  }
+  return fallback;
+}
+
+async function createModelFromProvider(
   provider: Pick<CustomProvider, "type" | "baseURL" | "providerKey" | "name">,
   apiKey: string,
   modelName: string,
   sessionId?: string
-): LanguageModelV4 {
+): Promise<LanguageModelV4> {
   const goHeaders = isOpenCodeGoBaseURL(provider.baseURL)
     ? getOpenCodeGoHeaders(sessionId)
     : undefined;
 
   if (provider.type === "openai") {
+    const routing = await getCustomModelRouting(provider, modelName);
+
+    if (routing.useResponsesApi) {
+      // Responses-only models (e.g. Muse Spark on OpenCode Zen) reject
+      // /chat/completions with ModelProtocolUnsupported. createOpenAI's
+      // default languageModel uses the Responses API (/responses).
+      return createOpenAI({
+        apiKey,
+        baseURL: provider.baseURL,
+        ...(goHeaders ? { headers: goHeaders } : {}),
+      }).languageModel(modelName);
+    }
+
     const sdk = getCustomProviderSdk(provider);
 
     if (sdk === "openai") {
@@ -272,7 +370,7 @@ async function resolveCustomProvider(
 ) {
   const cached = providerCache.get(providerId);
   if (cached) {
-    return createModelFromProvider(
+    return await createModelFromProvider(
       {
         baseURL: cached.baseURL,
         name: cached.name,
@@ -301,7 +399,12 @@ async function resolveCustomProvider(
     throw new ChatbotError("bad_request:provider", { cause: error });
   }
 
-  const model = createModelFromProvider(provider, apiKey, modelName, sessionId);
+  const model = await createModelFromProvider(
+    provider,
+    apiKey,
+    modelName,
+    sessionId
+  );
   providerCache.set(providerId, {
     apiKey,
     baseURL: provider.baseURL,

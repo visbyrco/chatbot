@@ -11,9 +11,9 @@ import {
 } from "@/lib/ai/models";
 import { titlePrompt } from "@/lib/ai/prompts";
 import {
-  getCustomProviderOptionsKey,
+  getCustomModelRouting,
   getLanguageModel,
-  isOpenAICompatibleProvider,
+  isResponsesApiEffort,
 } from "@/lib/ai/providers";
 import { usesMockAuthNow } from "@/lib/constants";
 import {
@@ -140,12 +140,19 @@ export async function generateTitleFromUserMessage({
         }
         const providerId = modelId.split("/")[0].slice(7);
         const provider = await getCustomProviderById({ id: providerId });
-        if (provider && isOpenAICompatibleProvider(provider)) {
-          providerOptions = {
-            [getCustomProviderOptionsKey(provider)]: {
-              reasoningEffort: effort,
-            },
-          };
+        if (provider) {
+          const modelName = modelId.split("/").slice(1).join("/");
+          const routing = await getCustomModelRouting(provider, modelName);
+          const sendEffort =
+            routing.sendReasoningEffort &&
+            (!routing.useResponsesApi || isResponsesApiEffort(effort));
+          if (sendEffort) {
+            providerOptions = {
+              [routing.providerOptionsKey]: {
+                reasoningEffort: effort,
+              },
+            };
+          }
         }
       }
     }

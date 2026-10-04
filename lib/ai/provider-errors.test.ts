@@ -247,6 +247,51 @@ describe("getStreamErrorMessage", () => {
     );
   });
 
+  it("maps ModelDeprecated with a replacement to a switch-model message", () => {
+    expect(
+      getStreamErrorMessage({
+        responseBody: JSON.stringify({
+          error: {
+            message:
+              "Model kimi-k2.6 has been deprecated. Use kimi-k2.7-code instead.",
+            type: "ModelDeprecated",
+          },
+          metadata: { model: "kimi-k2.6", replacement: "kimi-k2.7-code" },
+          type: "error",
+        }),
+        statusCode: 410,
+      })
+    ).toBe(
+      "kimi-k2.6 has been deprecated. Switch to kimi-k2.7-code in settings to keep chatting."
+    );
+  });
+
+  it("maps ModelDeprecated without a replacement to a pick-model message", () => {
+    expect(
+      getStreamErrorMessage({
+        error: { message: "gone", type: "ModelDeprecated" },
+        statusCode: 410,
+      })
+    ).toBe(
+      "This model has been deprecated. Pick another model in settings to keep chatting."
+    );
+  });
+
+  it("maps ModelProtocolUnsupported to an API-mismatch message", () => {
+    const message = getStreamErrorMessage({
+      responseBody: JSON.stringify({
+        error: {
+          message: "Model does not support this protocol.",
+          type: "ModelProtocolUnsupported",
+        },
+        type: "error",
+      }),
+      statusCode: 400,
+    });
+    expect(message).toContain("Model does not support this protocol.");
+    expect(message).toContain("Try another model or update the app.");
+  });
+
   it("explains OpenCode Go session-header rejections", () => {
     const message = getStreamErrorMessage({
       responseBody: JSON.stringify({

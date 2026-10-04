@@ -38,6 +38,7 @@ type ActiveChatContextValue = {
   status: UseChatHelpers<ChatMessage>["status"];
   stop: UseChatHelpers<ChatMessage>["stop"];
   regenerate: UseChatHelpers<ChatMessage>["regenerate"];
+  chatError: UseChatHelpers<ChatMessage>["error"];
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
@@ -160,6 +161,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     setMessages,
     sendMessage,
     status,
+    error: chatError,
     stop,
     regenerate,
     resumeStream,
@@ -179,17 +181,15 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
     onError: (error) => {
-      if (error instanceof ChatbotError) {
-        toast({
-          description: formatToastDescription(error.message, error.cause),
-          type: "error",
-        });
-      } else {
-        toast({
-          description: error.message || "Oops, an error occurred!",
-          type: "error",
-        });
-      }
+      const description =
+        error instanceof ChatbotError
+          ? formatToastDescription(error.message, error.cause)
+          : error.message || "Oops, an error occurred!";
+      toast({
+        description,
+        title: "Couldn't get a response",
+        type: "error",
+      });
     },
     onFinish: () => {
       mutate(
@@ -427,6 +427,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ActiveChatContextValue>(
     () => ({
       addToolApprovalResponse,
+      chatError,
       chatId,
       currentModelId,
       enabledTools,
@@ -448,6 +449,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     }),
     [
       chatId,
+      chatError,
       messages,
       setMessages,
       sendMessage,

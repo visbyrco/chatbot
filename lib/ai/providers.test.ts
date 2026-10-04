@@ -1,0 +1,224 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const ZEN_PROVIDER = {
+  baseURL: "https://opencode.ai/zen/go/v1",
+  name: "Zen",
+  providerKey: "opencode-go",
+  type: "openai",
+} as const;
+
+function mockCatalog(catalogModel: unknown, npm?: string) {
+  vi.doMock("./catalog", () => ({
+    getCatalogProvider: vi
+      .fn()
+      .mockReturnValue(npm === undefined ? undefined : { npm }),
+    getLiveCatalogModel: vi.fn().mockResolvedValue(catalogModel),
+  }));
+}
+
+async function importRouting(catalogModel: unknown, npm?: string) {
+  mockCatalog(catalogModel, npm);
+  vi.doMock("@/lib/db/queries", () => ({
+    getCustomProviderById: vi.fn(),
+  }));
+  vi.doMock("./encryption", () => ({
+    decrypt: vi.fn().mockReturnValue("test-key"),
+  }));
+  return await import("./providers");
+}
+
+describe("getCustomModelRouting", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("routes per-model @ai-sdk/openai overrides to the Responses API", async () => {
+    const { getCustomModelRouting } = await importRouting(
+      { apiShape: undefined, npmOverride: "@ai-sdk/openai" },
+      "@ai-sdk/openai-compatible"
+    );
+    await expect(
+      getCustomModelRouting({ ...ZEN_PROVIDER }, "muse-spark-1.3-contributor")
+    ).resolves.toEqual({
+      providerOptionsKey: "openai",
+      sendReasoningEffort: true,
+      useResponsesApi: true,
+    });
+  });
+
+  it("routes apiShape responses to the Responses API", async () => {
+    const { getCustomModelRouting } = await importRouting(
+      { apiShape: "responses", npmOverride: undefined },
+      "@ai-sdk/openai-compatible"
+    );
+    await expect(
+      getCustomModelRouting({ ...ZEN_PROVIDER }, "some-model")
+    ).resolves.toMatchObject({ useResponsesApi: true });
+  });
+
+  it("keeps apiShape completions on chat completions", async () => {
+    const { getCustomModelRouting } = await importRouting(
+      { apiShape: "completions", npmOverride: "@ai-sdk/openai" },
+      "@ai-sdk/openai-compatible"
+    );
+    await expect(
+      getCustomModelRouting({ ...ZEN_PROVIDER }, "kimi-k2.7-code")
+    ).resolves.toEqual({
+      providerOptionsKey: "opencode-go",
+      sendReasoningEffort: true,
+      useResponsesApi: false,
+    });
+  });
+
+  it("keeps models without a catalog entry on chat completions", async () => {
+    const { getCustomModelRouting } = await importRouting(
+      undefined,
+      "@ai-sdk/openai-compatible"
+    );
+    await expect(
+      getCustomModelRouting({ ...ZEN_PROVIDER }, "unknown-model")
+    ).resolves.toEqual({
+      providerOptionsKey: "opencode-go",
+      sendReasoningEffort: true,
+      useResponsesApi: false,
+    });
+  });
+
+  it("keeps provider-level @ai-sdk/openai without an override on chat", async () => {
+    const { getCustomModelRouting } = await importRouting(
+      { apiShape: undefined, npmOverride: undefined },
+      "@ai-sdk/openai"
+    );
+    await expect(
+      getCustomModelRouting({ ...ZEN_PROVIDER }, "plain-model")
+    ).resolves.toEqual({
+      providerOptionsKey: "opencode-go",
+      sendReasoningEffort: false,
+      useResponsesApi: false,
+    });
+  });
+
+  it("falls back for non-openai providers without touching the catalog", async () => {
+    const { getCustomModelRouting } = await importRouting(
+      { apiShape: "responses", npmOverride: "@ai-sdk/openai" },
+      undefined
+    );
+    const provider = {
+      name: "Claude",
+      providerKey: "anthropic",
+      type: "anthropic",
+    } as const;
+    await expect(
+      getCustomModelRouting(provider, "claude-model")
+    ).resolves.toEqual({
+      providerOptionsKey: "anthropic",
+      sendReasoningEffort: false,
+      useResponsesApi: false,
+    });
+  });
+
+  it("falls back when the catalog lookup fails", async () => {
+    vi.doMock("./catalog", () => ({
+      getCatalogProvider: vi.fn().mockReturnValue(undefined),
+      getLiveCatalogModel: vi.fn().mockRejectedValue(new Error("offline")),
+    }));
+    vi.doMock("@/lib/db/queries", () => ({
+      getCustomProviderById: vi.fn(),
+    }));
+    const { getCustomModelRouting } = await import("./providers");
+    await expect(
+      getCustomModelRouting({ ...ZEN_PROVIDER }, "any-model")
+    ).resolves.toEqual({
+      providerOptionsKey: "opencode-go",
+      sendReasoningEffort: true,
+      useResponsesApi: false,
+    });
+  });
+});
+
+describe("isResponsesApiEffort", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("accepts the OpenAI effort levels", async () => {
+    mockCatalog(undefined);
+    const { isResponsesApiEffort } = await import("./providers");
+    for (const effort of ["minimal", "low", "medium", "high", "xhigh"]) {
+      expect(isResponsesApiEffort(effort)).toBe(true);
+    }
+    for (const effort of ["max", "default", "none", ""]) {
+      expect(isResponsesApiEffort(effort)).toBe(false);
+    }
+  });
+});
+
+describe("getLanguageModel construction", () => {
+  const envBackup: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    // Bypass the mock provider so custom providers resolve for real.
+    for (const key of [
+      "CLERK_SECRET_KEY",
+      "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+      "POSTGRES_URL",
+    ]) {
+      envBackup[key] = process.env[key];
+    }
+    process.env["CLERK_SECRET_KEY"] = "test-secret";
+    process.env["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"] = "test-publishable";
+    process.env["POSTGRES_URL"] = "postgres://test";
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(envBackup)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
+  async function importWithProvider(catalogModel: unknown) {
+    mockCatalog(catalogModel, "@ai-sdk/openai-compatible");
+    vi.doMock("@/lib/db/queries", () => ({
+      getCustomProviderById: vi.fn().mockResolvedValue({
+        baseURL: ZEN_PROVIDER.baseURL,
+        encryptedApiKey: "encrypted",
+        iv: "iv",
+        name: ZEN_PROVIDER.name,
+        providerKey: ZEN_PROVIDER.providerKey,
+        salt: null,
+        type: ZEN_PROVIDER.type,
+      }),
+    }));
+    vi.doMock("./encryption", () => ({
+      decrypt: vi.fn().mockReturnValue("test-key"),
+    }));
+    return await import("./providers");
+  }
+
+  it("builds Responses API models for per-model openai overrides", async () => {
+    const { getLanguageModel } = await importWithProvider({
+      apiShape: undefined,
+      npmOverride: "@ai-sdk/openai",
+    });
+    const model = await getLanguageModel(
+      "custom-p1/muse-spark-1.3-contributor"
+    );
+    expect(model?.modelId).toBe("muse-spark-1.3-contributor");
+    expect(model?.provider).toBe("openai.responses");
+  });
+
+  it("builds chat-completion models without an override", async () => {
+    const { getLanguageModel } = await importWithProvider(undefined);
+    const model = await getLanguageModel("custom-p1/kimi-k2.7-code");
+    expect(model?.modelId).toBe("kimi-k2.7-code");
+    expect(model?.provider).toBe("opencode-go.chat");
+  });
+});
