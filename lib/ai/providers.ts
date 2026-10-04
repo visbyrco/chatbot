@@ -352,6 +352,16 @@ const UNIFIED_REASONING_VALUES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Effort values callers may pass. The chat route validates these via schema,
+ * but title generation reads them straight from cookies, so unknown strings
+ * are treated as unset (server default) rather than forwarded to providers.
+ */
+const KNOWN_EFFORTS: ReadonlySet<string> = new Set([
+  ...UNIFIED_REASONING_VALUES,
+  "max",
+]);
+
+/**
  * Build the reasoning-related call options for `streamText`/`generateText`
  * from a resolved route. Centralizes the per-SDK mapping so chat streaming
  * and title generation stay consistent:
@@ -376,8 +386,14 @@ export function buildReasoningCallOptions(
   if (!opts.isReasoningModel) {
     return {};
   }
-  const effort =
+  const rawEffort =
     opts.effort && opts.effort !== "default" ? opts.effort : undefined;
+  // Drop unrecognized values (e.g. tampered cookies): the Responses
+  // `reasoningEffort` field is free-string, so the SDK would forward
+  // garbage to the endpoint. "max"/"none" are kept — the SDK accepts both
+  // and Luna-class models list them in the live catalog.
+  const effort =
+    rawEffort && KNOWN_EFFORTS.has(rawEffort) ? rawEffort : undefined;
   // The unified option rejects provider-specific values like "max".
   const unifiedReasoning =
     effort && effort !== "max" && UNIFIED_REASONING_VALUES.has(effort)
@@ -404,12 +420,18 @@ export function buildReasoningCallOptions(
   }
 
   if (routing.useAnthropicApi) {
+    // Omit the cap when the catalog has no limit: callers fall back to the
+    // SDK default either way, and an explicit `undefined` key would only
+    // obscure that.
+    const cap = routing.maxOutputTokens
+      ? { maxOutputTokens: routing.maxOutputTokens }
+      : {};
     if (!effort) {
-      return { maxOutputTokens: routing.maxOutputTokens };
+      return cap;
     }
     if (effort === "none") {
       return {
-        maxOutputTokens: routing.maxOutputTokens,
+        ...cap,
         providerOptions: {
           anthropic: { thinking: { type: "disabled" } },
         },
@@ -418,18 +440,23 @@ export function buildReasoningCallOptions(
     // The Anthropic SDK has no "minimal" level; closest equivalent.
     const mappedEffort = effort === "minimal" ? "low" : effort;
     if (!ANTHROPIC_EFFORTS.has(mappedEffort)) {
-      return { maxOutputTokens: routing.maxOutputTokens };
+      return cap;
     }
     return {
-      maxOutputTokens: routing.maxOutputTokens,
+      ...cap,
       providerOptions: {
         anthropic: { effort: mappedEffort },
       },
     };
   }
 
-  if (!effort || !routing.sendReasoningEffort) {
+  if (!effort) {
     return {};
+  }
+  // The unified option is independent of the provider-options gate: e.g.
+  // provider-level `@ai-sdk/openai` setups resolve effort from it.
+  if (!routing.sendReasoningEffort) {
+    return { reasoning: unifiedReasoning };
   }
   return {
     providerOptions: {

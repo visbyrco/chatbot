@@ -268,6 +268,50 @@ describe("buildReasoningCallOptions", () => {
     });
   });
 
+  it("forwards Responses max effort literally", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    // Luna-class models list "max" in the live catalog; the Responses
+    // `reasoningEffort` field is free-string so the SDK passes it through.
+    expect(
+      buildReasoningCallOptions(responsesRoute, {
+        effort: "max",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: {
+        openai: {
+          forceReasoning: true,
+          reasoningEffort: "max",
+          reasoningSummary: "auto",
+        },
+      },
+      reasoning: undefined,
+    });
+  });
+
+  it("drops unrecognized effort values", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    // Title generation reads effort straight from cookies, bypassing the
+    // chat route's schema validation.
+    expect(
+      buildReasoningCallOptions(responsesRoute, {
+        effort: "turbo",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: {
+        openai: { forceReasoning: true, reasoningSummary: "auto" },
+      },
+      reasoning: undefined,
+    });
+    expect(
+      buildReasoningCallOptions(chatRoute, {
+        effort: "turbo",
+        isReasoningModel: true,
+      })
+    ).toEqual({});
+  });
+
   it("maps efforts to the Anthropic Messages API", async () => {
     const { buildReasoningCallOptions } = await importHelper();
     expect(
@@ -325,6 +369,45 @@ describe("buildReasoningCallOptions", () => {
         isReasoningModel: true,
       })
     ).toEqual({});
+  });
+
+  it("keeps unified reasoning when provider options are disabled", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    // Provider-level `@ai-sdk/openai` setups resolve effort from the unified
+    // option, so it must survive `sendReasoningEffort: false`.
+    const openaiChatRoute = {
+      ...chatRoute,
+      providerOptionsKey: "openai",
+      sendReasoningEffort: false,
+    } as const;
+    expect(
+      buildReasoningCallOptions(openaiChatRoute, {
+        effort: "high",
+        isReasoningModel: true,
+      })
+    ).toEqual({ reasoning: "high" });
+  });
+
+  it("omits the token cap when the catalog has no limit", async () => {
+    const { buildReasoningCallOptions } = await importHelper();
+    const noLimitRoute = {
+      ...anthropicRoute,
+      maxOutputTokens: undefined,
+    } as const;
+    const noEffort = buildReasoningCallOptions(noLimitRoute, {
+      effort: "default",
+      isReasoningModel: true,
+    });
+    expect(noEffort).toEqual({});
+    expect("maxOutputTokens" in noEffort).toBe(false);
+    expect(
+      buildReasoningCallOptions(noLimitRoute, {
+        effort: "high",
+        isReasoningModel: true,
+      })
+    ).toEqual({
+      providerOptions: { anthropic: { effort: "high" } },
+    });
   });
 });
 

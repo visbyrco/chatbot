@@ -121,30 +121,31 @@ export async function generateTitleFromUserMessage({
     let providerOptions: ReasoningCallOptions["providerOptions"];
     let titleMaxOutputTokens: number | undefined;
 
-    if (effort && effort !== "default") {
-      const capabilities = userId
-        ? await getCustomCapabilitiesForUser(userId)
-        : undefined;
-      const isReasoningModel = capabilities?.[modelId]?.reasoning === true;
+    const capabilities = userId
+      ? await getCustomCapabilitiesForUser(userId)
+      : undefined;
+    const isReasoningModel = capabilities?.[modelId]?.reasoning === true;
 
-      if (isReasoningModel) {
-        const providerId = modelId.split("/")[0].slice(7);
-        const provider = await getCustomProviderById({ id: providerId });
-        if (provider) {
-          const modelName = modelId.split("/").slice(1).join("/");
-          const routing = await getCustomModelRouting(provider, modelName);
-          const reasoningCall = buildReasoningCallOptions(routing, {
-            effort,
-            isReasoningModel,
-          });
-          ({
-            maxOutputTokens: titleMaxOutputTokens,
-            providerOptions,
-            reasoning: reasoningValue,
-          } = reasoningCall);
-        } else if (effort !== "max") {
-          reasoningValue = effort;
-        }
+    // Always resolve call options for reasoning models, even at the default
+    // effort: Responses titles need `reasoningSummary`/`forceReasoning` and
+    // Anthropic titles need the catalog `maxOutputTokens` cap.
+    if (isReasoningModel) {
+      const providerId = modelId.split("/")[0].slice(7);
+      const provider = await getCustomProviderById({ id: providerId });
+      if (provider) {
+        const modelName = modelId.split("/").slice(1).join("/");
+        const routing = await getCustomModelRouting(provider, modelName);
+        const reasoningCall = buildReasoningCallOptions(routing, {
+          effort,
+          isReasoningModel,
+        });
+        ({
+          maxOutputTokens: titleMaxOutputTokens,
+          providerOptions,
+          reasoning: reasoningValue,
+        } = reasoningCall);
+      } else if (effort && effort !== "default" && effort !== "max") {
+        reasoningValue = effort;
       }
     }
 
