@@ -135,6 +135,29 @@ export const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
 export const MAX_VIDEO_AUDIO_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
 export const UPLOAD_LIMITS_MESSAGE = "File too large — max 500 MB";
 
+// Max raw bytes inlined as data URLs for model sends. Larger local files are
+// accepted at upload time but cannot be inlined (OOM risk: 50 MB → ~66 MB
+// base64, times concurrent parts). Keep in sync with lib/attachments.ts.
+export const MAX_INLINE_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return "unknown size";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KB", "MB", "GB"];
+  let size = bytes / 1024;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const rounded = size >= 100 ? Math.round(size) : Math.round(size * 10) / 10;
+  return `${rounded} ${units[unitIndex]}`;
+}
+
 const VIDEO_MEDIA_TYPES_SET = new Set([
   "video/mp4",
   "video/webm",

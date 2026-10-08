@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
 import { getFallbackUploadDir, getUploadDir } from "@/lib/server/upload-dir";
 import type { ChatMessage } from "@/lib/types";
@@ -107,6 +107,7 @@ export const ALLOWED_MEDIA_TYPES: readonly string[] = [
 export {
   AUDIO_EXTS,
   EXT_TO_MEDIA_TYPE,
+  formatFileSize,
   getMaxSizeForFile,
   getMaxSizeForMediaType,
   getMediaTypeForExtension,
@@ -116,11 +117,14 @@ export {
   isGenericOctetStream,
   isVideoOrAudioMediaType,
   MAX_FILE_SIZE,
+  MAX_INLINE_FILE_SIZE,
   MAX_VIDEO_AUDIO_FILE_SIZE,
   TEXT_EXTS,
   UPLOAD_LIMITS_MESSAGE,
   VIDEO_EXTS,
 } from "./attachment-constants";
+
+import { formatFileSize, MAX_INLINE_FILE_SIZE } from "./attachment-constants";
 
 export function isBlockedMediaType(mediaType: string | undefined): boolean {
   return (
@@ -260,21 +264,43 @@ export function isValidAttachmentUrl(url: string): boolean {
  * the data URL itself (`splitDataUrl`), not from the file part's `mediaType`
  * field — so a placeholder like `application/octet-stream` would reach the
  * provider and cause it to reject or mishandle the attachment.
+ *
+ * Files larger than `MAX_INLINE_FILE_SIZE` also return `null` here to avoid
+ * OOM from base64 expansion. Use `localFileUrlToDataUrlWithStatus()` when the
+ * caller needs to distinguish "too large" from "unreadable".
  */
 export async function localFileUrlToDataUrl(
   url: string | undefined,
   mediaType: string,
   ownerUserId: string
 ): Promise<string | null> {
+  const result = await localFileUrlToDataUrlWithStatus(
+    url,
+    mediaType,
+    ownerUserId
+  );
+  return result.status === "inline" ? result.dataUrl : null;
+}
+
+export type LocalFileInlineResult =
+  | { dataUrl: string; status: "inline" }
+  | { filename: string; size: number; status: "too-large" }
+  | { status: "unreadable" };
+
+export async function localFileUrlToDataUrlWithStatus(
+  url: string | undefined,
+  mediaType: string,
+  ownerUserId: string
+): Promise<LocalFileInlineResult> {
   if (!isLocalFileUrl(url)) {
-    return null;
+    return { status: "unreadable" };
   }
 
   const filename = sanitizeFilename(
     basename(new URL(url as string, "http://local.invalid").pathname)
   );
   if (!filename) {
-    return null;
+    return { status: "unreadable" };
   }
 
   try {
@@ -290,13 +316,28 @@ export async function localFileUrlToDataUrl(
     for (const uploadDir of candidates) {
       const filePath = resolve(uploadDir, filename);
       const rel = relative(uploadDir, filePath);
-      // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
       if (isAbsolute(rel) || rel.startsWith("..")) {
+        continue;
       }
       // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
       const owned = await isFileOwnedByUser(filename, ownerUserId, uploadDir);
       if (!owned) {
-        // Check other candidate before warning
+        continue;
+      }
+      try {
+        // Pre-check size via stat so a 500 MB upload is never fully read
+        // into memory just to be discarded as too-large.
+        // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
+        const fileSize = (await stat(filePath)).size;
+        if (fileSize > MAX_INLINE_FILE_SIZE) {
+          console.warn("Attachment too large to inline, skipping model send:", {
+            filename,
+            size: fileSize,
+          });
+          return { filename, size: fileSize, status: "too-large" };
+        }
+      } catch {
+        continue;
       }
       try {
         buffer = await readFile(filePath);
@@ -318,22 +359,26 @@ export async function localFileUrlToDataUrl(
           ownerUserId,
         });
       }
-      return null;
+      return { status: "unreadable" };
     }
     // Use found buffer
-    // Guard against OOM: 50 MB video → ~66 MB base64 string, times concurrent parts
-    // Keep inline limit at ~20 MB raw; larger files get text placeholder.
-    if (buffer.length > 20 * 1024 * 1024) {
-      console.warn("Attachment too large to inline, returning placeholder:", {
+    // Guard against OOM: 50 MB video → ~66 MB base64 string, times concurrent parts.
+    // Files over MAX_INLINE_FILE_SIZE are not inlined; the caller sends an
+    // explicit "too large" text placeholder instead of "[unreadable]".
+    if (buffer.length > MAX_INLINE_FILE_SIZE) {
+      console.warn("Attachment too large to inline, skipping model send:", {
         filename,
         size: buffer.length,
       });
-      return null;
+      return { filename, size: buffer.length, status: "too-large" };
     }
-    return `data:${normalizeMediaType(mediaType)};base64,${buffer.toString("base64")}`;
+    return {
+      dataUrl: `data:${normalizeMediaType(mediaType)};base64,${buffer.toString("base64")}`,
+      status: "inline",
+    };
   } catch (error) {
     console.error("Failed to read attachment file:", { error, filename });
-    return null;
+    return { status: "unreadable" };
   }
 }
 
@@ -406,6 +451,10 @@ type FilePart = {
  *   it "supported"), so the image would otherwise be silently dropped.
  * - **Text-like files:** replace the `file` part with an inline `text` part
  *   containing the file content, so any model — vision or not — can read it.
+ * - **Files over `MAX_INLINE_FILE_SIZE`:** replaced with an explicit
+ *   "too large to send to model" text part (including actual size and limit)
+ *   so the model can tell the user why it can't see the file, instead of a
+ *   misleading `[unreadable]`.
  *
  * Non-local URLs and read failures are left untouched so the request still
  * works (the model just may not see that attachment). The DB is unaffected —
@@ -432,12 +481,24 @@ export async function resolveAttachmentParts(
             return part;
           }
 
-          const dataUrl = await localFileUrlToDataUrl(
+          const result = await localFileUrlToDataUrlWithStatus(
             filePart.url,
             filePart.mediaType,
             ownerUserId
           );
-          if (dataUrl === null) {
+          if (result.status === "too-large") {
+            const displayName =
+              filePart.name ?? filePart.filename ?? result.filename;
+            // Don't forward a bare relative URL to the model — the AI SDK
+            // would throw on `new URL(relative)`. Send an explicit note with
+            // the actual size so the model can tell the user the file was
+            // accepted at upload time but is too large to send inline.
+            return {
+              text: `<attachment name="${displayName}">[attachment too large to send to model: ${formatFileSize(result.size)} exceeds the ${formatFileSize(MAX_INLINE_FILE_SIZE)} inline limit]</attachment>`,
+              type: "text" as const,
+            };
+          }
+          if (result.status !== "inline") {
             // Local file couldn't be read (e.g. deleted since upload). Don't
             // forward a bare relative URL to the model — the AI SDK would
             // throw on `new URL(relative)`. Send an inline note instead.
@@ -446,6 +507,7 @@ export async function resolveAttachmentParts(
               type: "text" as const,
             };
           }
+          const { dataUrl } = result;
 
           // Text-like files → inline text part (works on every model).
           if (isTextMediaType(filePart.mediaType)) {
