@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
 import { getFallbackUploadDir, getUploadDir } from "@/lib/server/upload-dir";
 import type { ChatMessage } from "@/lib/types";
@@ -316,13 +316,28 @@ export async function localFileUrlToDataUrlWithStatus(
     for (const uploadDir of candidates) {
       const filePath = resolve(uploadDir, filename);
       const rel = relative(uploadDir, filePath);
-      // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional fallback to next candidate
       if (isAbsolute(rel) || rel.startsWith("..")) {
+        continue;
       }
       // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
       const owned = await isFileOwnedByUser(filename, ownerUserId, uploadDir);
       if (!owned) {
-        // Check other candidate before warning
+        continue;
+      }
+      try {
+        // Pre-check size via stat so a 500 MB upload is never fully read
+        // into memory just to be discarded as too-large.
+        // biome-ignore lint/performance/noAwaitInLoops: sequential fallback over at most two directories
+        const fileSize = (await stat(filePath)).size;
+        if (fileSize > MAX_INLINE_FILE_SIZE) {
+          console.warn("Attachment too large to inline, skipping model send:", {
+            filename,
+            size: fileSize,
+          });
+          return { filename, size: fileSize, status: "too-large" };
+        }
+      } catch {
+        continue;
       }
       try {
         buffer = await readFile(filePath);
