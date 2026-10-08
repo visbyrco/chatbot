@@ -73,19 +73,90 @@ function memoryRateLimit(
 }
 
 let client: ReturnType<typeof createClient> | null = null;
+// Shared promise for the in-flight initial connect. Awaiting it (with a
+// bounded timeout) prevents the cold-start race where the first request(s)
+// see `isReady === false` while a healthy Redis is still connecting and get
+// rejected with a spurious 429.
+let connectPromise: Promise<void> | null = null;
+const CONNECT_TIMEOUT_MS = 2000;
 
 function getClient() {
   if (!client && process.env.REDIS_URL) {
     client = createClient({ url: process.env.REDIS_URL });
-    client.on("error", (err) => {
+    const newClient = client;
+    newClient.on("error", (err) => {
       console.warn("Redis rate-limit client error:", err);
     });
-    client.connect().catch((err) => {
-      console.warn("Redis rate-limit connection failed:", err);
-      client = null;
-    });
+    connectPromise = newClient
+      .connect()
+      .then(() => {
+        connectPromise = null;
+      })
+      .catch((err: unknown) => {
+        console.warn("Redis rate-limit connection failed:", err);
+        if (client === newClient) {
+          client = null;
+        }
+        connectPromise = null;
+        throw err;
+      }) as Promise<void>;
   }
   return client;
+}
+
+/**
+ * Wait for an in-flight initial Redis connect, bounded so a hung Redis
+ * doesn't stall requests indefinitely. Returns true when the client reports
+ * ready afterwards. A timeout leaves the shared promise in place so a later
+ * request can await the still-pending connect.
+ */
+async function awaitPendingConnect(
+  redis: NonNullable<ReturnType<typeof getClient>>
+): Promise<boolean> {
+  const pending = connectPromise;
+  if (!pending) {
+    return redis.isReady;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Redis connect timeout")),
+          CONNECT_TIMEOUT_MS
+        );
+      }),
+    ]);
+  } catch {
+    return false;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+  return redis.isReady;
+}
+
+/**
+ * Prime the Redis connection at boot. Fire-and-forget: never throws and
+ * never blocks startup; the bounded timeout in `rateLimit` is the real
+ * guard. Called from `instrumentation.ts`.
+ */
+export function warmRateLimitConnection(): void {
+  if (isTestEnvironment || !process.env.REDIS_URL) {
+    return;
+  }
+  try {
+    const redis = getClient();
+    if (redis && !redis.isReady && connectPromise) {
+      connectPromise.catch(() => {
+        // Already logged in getClient(); swallow unhandled rejection here.
+      });
+    }
+  } catch {
+    // Warmup is best-effort only.
+  }
 }
 
 /**
@@ -104,6 +175,23 @@ export async function rateLimit(
   }
 
   const redis = getClient();
+
+  // Cold-start race guard: if a connect is in flight (the usual case right
+  // after process start), await it with a bounded timeout before deciding
+  // Redis is unavailable. Only fail closed when the connect actually
+  // failed/timed out — not while it is still establishing.
+  if (redis && !redis.isReady && connectPromise) {
+    const ready = await awaitPendingConnect(redis);
+    if (ready) {
+      // Fall through to the Redis path below with the now-ready client.
+    } else if (process.env.REDIS_URL) {
+      // Fail-closed when Redis is expected but unavailable
+      console.warn(
+        `Rate limit check for "${key}" failed: Redis not ready (fail-closed)`
+      );
+      throw new ChatbotError("rate_limit:chat");
+    }
+  }
 
   if (!redis?.isReady) {
     if (process.env.REDIS_URL) {
