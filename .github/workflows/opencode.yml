@@ -1,5 +1,9 @@
 name: opencode
 
+# Sole handler for /oc and /opencode comment commands.
+# The review workflow (opencode-review.yml) runs automatically on PR creation
+# and does not listen to commands, so the two workflows never trigger each other.
+
 on:
   issue_comment:
     types: [created]
@@ -9,7 +13,7 @@ on:
 jobs:
   opencode:
     if: |
-      (
+      github.event.comment.user.type != 'Bot' && (
         contains(github.event.comment.body, ' /oc') ||
         startsWith(github.event.comment.body, '/oc') ||
         contains(github.event.comment.body, ' /opencode') ||
