@@ -20,13 +20,24 @@ and Postgres on `0.0.0.0:5433` with a trivial password (#218).
 ## Credentials
 
 - Required: `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `ENCRYPTION_KEY`.
-  Generate each with `openssl rand -base64 32`.
+  Generate the DB/Redis passwords with `openssl rand -hex 32` (hex has no
+  URL-unsafe characters, so the passwords survive embedding in
+  `POSTGRES_URL`/`REDIS_URL`; base64 `+`, `/`, `=` break URL parsing
+  unless percent-encoded). `ENCRYPTION_KEY` uses `openssl rand -base64 32`.
 - `POSTGRES_URL` is built from `POSTGRES_USER`/`POSTGRES_PASSWORD`/
   `POSTGRES_DB` in both compose files. `REDIS_URL` defaults to
   `redis://:<REDIS_PASSWORD>@redis:6379` in prod.
 - The old `chatbot:chatbot` Postgres password and passwordless Redis must
   be treated as compromised: rotate both, then audit for unexpected keys
-  (`redis-cli --scan`) and rows before going live.
+  and rows before going live.
+- Postgres rotation: `docker compose -f docker-compose.prod.yml exec postgres
+  psql -U chatbot -c "ALTER USER chatbot WITH PASSWORD '<new-hex>'"`,
+  then update `POSTGRES_PASSWORD` and recreate the service.
+- Redis rotation: `docker compose -f docker-compose.prod.yml exec redis
+  redis-cli --user default --pass '<old>' CONFIG SET requirepass '<new-hex>'`,
+  then update `REDIS_PASSWORD` and recreate the service so the
+  command-line password matches. Audit with
+  `REDISCLI_AUTH='<pw>' redis-cli --scan` and delete unexpected keys.
 - Redis holds rate-limit counters and resumable-stream state. Anyone with
   write access can tamper with limits and availability, and `CONFIG SET` /
   `MODULE LOAD` paths are remote-code-execution risk, so auth is not
@@ -55,7 +66,7 @@ and CPU starvation, not a bad query. The prod compose sets `shm_size: 256mb`
 (the Docker default 64mb is too small for Postgres), CPU/memory
 limits and reservations so a noisy neighbour cannot starve the DB, and
 `log_checkpoints=on` plus `log_autovacuum_min_duration=1000` so pressure
-shows up in logs early.
+shows up in logs early. Both compose files set `shm_size: 256MB`.
 
 Watch for recurrence:
 

@@ -13,18 +13,18 @@
 #   docker compose -f docker-compose.prod.yml logs -f
 #
 # Required in the environment (or .env.local next to this file):
-#   POSTGRES_PASSWORD  strong unique password (openssl rand -base64 32)
-#   REDIS_PASSWORD     strong unique password (openssl rand -base64 32)
+#   POSTGRES_PASSWORD  strong unique password (openssl rand -hex 32)
+#   REDIS_PASSWORD     strong unique password (openssl rand -hex 32)
 #   ENCRYPTION_KEY     openssl rand -base64 32
+# Use hex (not base64) for the DB/Redis passwords: base64 emits +, /, =
+# which break URL parsing when embedded in POSTGRES_URL/REDIS_URL (#222
+# review). If you must use base64, URL-encode the password first.
 #   NEXT_PUBLIC_APP_URL https://<your-domain>
 #   Clerk keys for production (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY)
 #
-# Rotate credentials with:
-#   docker compose -f docker-compose.prod.yml exec postgres \
-#     psql -U chatbot -c "ALTER USER chatbot WITH PASSWORD '<new>'"
-# then update POSTGRES_PASSWORD/REDIS_PASSWORD and recreate the services.
-# Assume any previously exposed instance is compromised: rotate passwords and
-# audit for unexpected keys/rows (see docs/production-deploy.md).
+# Rotate credentials with the Postgres steps below plus the Redis steps in
+# docs/production-deploy.md. Assume any previously exposed instance is
+# compromised: rotate passwords and audit for unexpected keys/rows.
 services:
   app:
     build:
@@ -78,7 +78,7 @@ services:
     # No ports: stanza intentionally absent so the DB is reachable only over
     # the Compose network (#218). Add "127.0.0.1:5433:5432" temporarily for
     # local admin, never 0.0.0.0.
-    shm_size: 256mb
+    shm_size: 256MB
     cpus: 2.0
     mem_limit: 2g
     mem_reservation: 512m
@@ -119,7 +119,8 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      # REDISCLI_AUTH keeps the password out of the process table (redis-cli -a leaks via ps). #217
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 5

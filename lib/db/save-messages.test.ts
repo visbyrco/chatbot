@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -33,8 +34,8 @@ describe("saveMessages upsert semantics (#219)", () => {
       saveMessages,
       getMessagesByChatId,
     } = inMemoryQueries;
-    const user = getOrCreateUserByEmail(`upsert-${Date.now()}@test.local`);
-    const chatId = `00000000-0000-4000-a000-${Date.now().toString().slice(-12).padStart(12, "0")}`;
+    const user = getOrCreateUserByEmail(`upsert-${randomUUID()}@test.local`);
+    const chatId = randomUUID();
     saveChat({
       id: chatId,
       title: "upsert",
@@ -42,7 +43,7 @@ describe("saveMessages upsert semantics (#219)", () => {
       visibility: "private",
     });
 
-    const id = "11111111-1111-4111-8111-111111111111";
+    const id = randomUUID();
     await saveMessages({ messages: [makeMessage({ chatId, id })] });
     await saveMessages({
       messages: [
@@ -60,20 +61,23 @@ describe("saveMessages upsert semantics (#219)", () => {
     expect(matching[0]?.parts).toEqual([{ text: "updated", type: "text" }]);
   });
 
-  it("handles concurrent re-persists of the same id (onEnd race)", async () => {
+  // The in-memory store applies Map.set synchronously, so this pins the
+  // overwrite semantics both persists rely on rather than true DB-level
+  // concurrency: re-persisting the same id keeps one row with new content.
+  it("re-persisting the same id keeps a single row with latest content", async () => {
     const { inMemoryQueries } = await import("@/lib/db/in-memory");
     const { getOrCreateUserByEmail, saveChat, saveMessages, getMessageById } =
       inMemoryQueries;
-    const user = getOrCreateUserByEmail(`race-${Date.now()}@test.local`);
-    const chatId = `00000000-0000-4000-b000-${Date.now().toString().slice(-12).padStart(12, "0")}`;
+    const user = getOrCreateUserByEmail(`repersist-${randomUUID()}@test.local`);
+    const chatId = randomUUID();
     saveChat({
       id: chatId,
-      title: "race",
+      title: "repersist",
       userId: user.id,
       visibility: "private",
     });
 
-    const id = "22222222-2222-4222-8222-222222222222";
+    const id = randomUUID();
     const first = makeMessage({
       chatId,
       id,
@@ -98,13 +102,22 @@ describe("saveMessages upsert semantics (#219)", () => {
       path.resolve(import.meta.dirname, "./queries.pg.ts"),
       "utf8"
     );
+    const start = source.indexOf("export async function saveMessages");
+    expect(start).toBeGreaterThan(-1);
+    // Bound the block to the next top-level export so the assertions cannot
+    // pass on an upsert that lives in unrelated dead code.
+    const nextExport = source.indexOf("\nexport ", start + 1);
     const saveBlock = source.slice(
-      source.indexOf("export async function saveMessages")
+      start,
+      nextExport === -1 ? undefined : nextExport
     );
-    expect(saveBlock).toContain("onConflictDoUpdate");
-    expect(saveBlock).toContain("target: message.id");
-    expect(saveBlock).toContain("excluded.parts");
-    expect(saveBlock).toContain("excluded.metadata");
-    expect(saveBlock).toContain("excluded.attachments");
+    // The upsert target and the refreshed columns must sit in one
+    // onConflictDoUpdate call, matching the in-memory Map.set semantics.
+    const upsert = saveBlock.match(/onConflictDoUpdate\(\{[\s\S]*?\}\)/);
+    expect(upsert).not.toBeNull();
+    expect(upsert?.[0]).toContain("target: message.id");
+    expect(upsert?.[0]).toContain("excluded.parts");
+    expect(upsert?.[0]).toContain("excluded.metadata");
+    expect(upsert?.[0]).toContain("excluded.attachments");
   });
 });

@@ -209,7 +209,8 @@ function handleTestRequest(request: NextRequest): NextResponse | Response {
     const hasTestCookie = request.cookies.has("test-user");
     const hasDemoCookie = request.cookies.has("demo-session");
     if (!hasTestCookie && !useDemoAuth) {
-      return NextResponse.json(
+      const nonce = generateNonce();
+      const unauthorized = NextResponse.json(
         {
           code: "unauthorized:chat",
           message:
@@ -217,6 +218,8 @@ function handleTestRequest(request: NextRequest): NextResponse | Response {
         },
         { status: 401 }
       );
+      applySecurityHeaders(unauthorized, nonce);
+      return unauthorized;
     }
     if (useDemoAuth && !hasTestCookie && !hasDemoCookie) {
       const demoEmail = `demo-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}@demo.local`;
@@ -294,7 +297,8 @@ const clerkHandler = clerkMiddleware(async (auth, request: NextRequest) => {
   if (isApiRoute && isProtectedRoute(request)) {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json(
+      const nonce = generateNonce();
+      const unauthorized = NextResponse.json(
         {
           code: "unauthorized:chat",
           message:
@@ -302,6 +306,8 @@ const clerkHandler = clerkMiddleware(async (auth, request: NextRequest) => {
         },
         { status: 401 }
       );
+      applySecurityHeaders(unauthorized, nonce);
+      return unauthorized;
     }
   } else if (isProtectedRoute(request)) {
     await auth.protect();

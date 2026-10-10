@@ -31,7 +31,9 @@ services:
       - NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL:-/}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - POSTGRES_URL=${POSTGRES_URL:-postgresql://${POSTGRES_USER:-chatbot}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@postgres:5432/${POSTGRES_DB:-chatbot}}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      # Derives auth from REDIS_PASSWORD when set (hex, so URL-safe), so
+      # setting only REDIS_PASSWORD cannot leave the app on a no-auth URL.
+      - REDIS_URL=${REDIS_URL:-redis://${REDIS_PASSWORD:+:${REDIS_PASSWORD}@}redis:6379}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
       - UPLOAD_DIR=/app/uploads
     volumes:
@@ -63,8 +65,8 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
     # Default Docker /dev/shm (64mb) is too small for Postgres and causes
-    # parallel-query and vacuum slowdowns. 256mb matches the prod file (#221).
-    shm_size: 256mb
+    # parallel-query and vacuum slowdowns. 256MB matches the prod file (#221).
+    shm_size: 256MB
     # Keep noisy neighbours from starving the DB on shared hosts (#221).
     # Compose v2 ignores deploy.resources without Swarm, but Docker Desktop
     # and recent Compose honour cpus/mem_limit below, so set both.
@@ -119,7 +121,8 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "if [ -n \"$REDIS_PASSWORD\" ]; then redis-cli -a \"$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi"]
+      # REDISCLI_AUTH keeps the password out of the process table (redis-cli -a leaks via ps). #217
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 5
