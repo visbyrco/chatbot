@@ -1,0 +1,131 @@
+# Production stack for live servers (e.g. https://chat.visbyr.com).
+#
+# This file exists so deployments stop drifting from the hardened defaults
+# (#217, #218). The pre-fix deploy compose published Redis on 0.0.0.0:6380
+# with no password and Postgres on 0.0.0.0:5433 with a trivial password,
+# and both ports showed active scanner probes. This file publishes nothing
+# for Postgres/Redis: the app reaches them over the Compose network, and the
+# only host port is the app itself on loopback behind a reverse proxy.
+#
+# Usage:
+#   POSTGRES_PASSWORD=<strong> REDIS_PASSWORD=<strong> ENCRYPTION_KEY=<key> \
+#     docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml logs -f
+#
+# Required in the environment (or .env.local next to this file):
+#   POSTGRES_PASSWORD  strong unique password (openssl rand -base64 32)
+#   REDIS_PASSWORD     strong unique password (openssl rand -base64 32)
+#   ENCRYPTION_KEY     openssl rand -base64 32
+#   NEXT_PUBLIC_APP_URL https://<your-domain>
+#   Clerk keys for production (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY)
+#
+# Rotate credentials with:
+#   docker compose -f docker-compose.prod.yml exec postgres \
+#     psql -U chatbot -c "ALTER USER chatbot WITH PASSWORD '<new>'"
+# then update POSTGRES_PASSWORD/REDIS_PASSWORD and recreate the services.
+# Assume any previously exposed instance is compromised: rotate passwords and
+# audit for unexpected keys/rows (see docs/production-deploy.md).
+services:
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL required}
+    # Loopback only, behind nginx/Apache TLS. Never publish on 0.0.0.0: the
+    # previous deploy exposed the app on 0.0.0.0:3001, bypassing the TLS front
+    # end (#218).
+    ports:
+      - "127.0.0.1:3001:3000"
+    env_file:
+      - .env.local
+    environment:
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - NEXT_PUBLIC_CLERK_SIGN_IN_URL=${NEXT_PUBLIC_CLERK_SIGN_IN_URL}
+      - NEXT_PUBLIC_CLERK_SIGN_UP_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_URL}
+      - NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL:-/}
+      - NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL:-/}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY required}
+      - POSTGRES_URL=${POSTGRES_URL:-postgresql://${POSTGRES_USER:-chatbot}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@postgres:5432/${POSTGRES_DB:-chatbot}}
+      - REDIS_URL=${REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD required}@redis:6379}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL required}
+      - UPLOAD_DIR=/app/uploads
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ping || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+    env_file:
+      - .env.local
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chatbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: ${POSTGRES_DB:-chatbot}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No ports: stanza intentionally absent so the DB is reachable only over
+    # the Compose network (#218). Add "127.0.0.1:5433:5432" temporarily for
+    # local admin, never 0.0.0.0.
+    shm_size: 256mb
+    cpus: 2.0
+    mem_limit: 2g
+    mem_reservation: 512m
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    command:
+      - postgres
+      - -c
+      - log_checkpoints=on
+      - -c
+      - log_autovacuum_min_duration=1000
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatbot} -d ${POSTGRES_DB:-chatbot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+    env_file:
+      - .env.local
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD required}
+    # No ports: stanza intentionally absent. Redis holds rate-limit counters
+    # and resumable-stream state; an unauthenticated network-reachable Redis
+    # is remote-code-execution risk (#217).
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:

@@ -93,10 +93,15 @@ docker compose up
 ```
 
 - App: `localhost:3001`
-- Postgres: `localhost:5433`
-- Redis: `localhost:6380`
+- Postgres: `localhost:5433` (loopback-only)
+- Redis: `localhost:6380` (loopback-only)
 
 Migrations run automatically on container start.
+
+For live servers use `docker-compose.prod.yml` instead: it publishes no
+DB/Redis ports, requires `POSTGRES_PASSWORD` and `REDIS_PASSWORD`, and adds
+Postgres `shm_size` plus CPU/memory guardrails. See
+`docs/production-deploy.md`. Never publish Postgres or Redis on `0.0.0.0`,
 
 > **Self-hosting behind nginx:** if you proxy to the app with nginx (as on
 > `server.hkjc.uk` for `chat.visbyr.com`), raise the upload limit. Nginx
