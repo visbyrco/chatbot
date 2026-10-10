@@ -209,7 +209,8 @@ function handleTestRequest(request: NextRequest): NextResponse | Response {
     const hasTestCookie = request.cookies.has("test-user");
     const hasDemoCookie = request.cookies.has("demo-session");
     if (!hasTestCookie && !useDemoAuth) {
-      return NextResponse.json(
+      const nonce = generateNonce();
+      const unauthorized = NextResponse.json(
         {
           code: "unauthorized:chat",
           message:
@@ -217,6 +218,8 @@ function handleTestRequest(request: NextRequest): NextResponse | Response {
         },
         { status: 401 }
       );
+      applySecurityHeaders(unauthorized, nonce);
+      return unauthorized;
     }
     if (useDemoAuth && !hasTestCookie && !hasDemoCookie) {
       const demoEmail = `demo-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}@demo.local`;
@@ -284,7 +287,29 @@ const clerkHandler = clerkMiddleware(async (auth, request: NextRequest) => {
     return csrfResponse;
   }
 
-  if (isProtectedRoute(request)) {
+  // Protected API routes always answer with JSON 401 when signed out, in
+  // both Clerk and test modes. auth.protect() rewrites non-document
+  // requests to /clerk_<id>, which Next.js cannot match, so bodied requests
+  // blow up as Server Action 500s and GETs surface as 404 HTML (#220).
+  // Checking the session first keeps the route handlers' unauthorized:chat
+  // contract intact. Page routes still go through auth.protect().
+  const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
+  if (isApiRoute && isProtectedRoute(request)) {
+    const { userId } = await auth();
+    if (!userId) {
+      const nonce = generateNonce();
+      const unauthorized = NextResponse.json(
+        {
+          code: "unauthorized:chat",
+          message:
+            "You need to sign in to view this chat. Please sign in and try again.",
+        },
+        { status: 401 }
+      );
+      applySecurityHeaders(unauthorized, nonce);
+      return unauthorized;
+    }
+  } else if (isProtectedRoute(request)) {
     await auth.protect();
   }
 

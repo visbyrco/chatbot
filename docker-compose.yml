@@ -1,3 +1,17 @@
+# Local dev stack (app + Postgres + Redis).
+#
+# Security notes (#217, #218, #221):
+# - No service is published on 0.0.0.0. Host ports are loopback-only, so the
+#   DB and Redis are not reachable off-host. The app talks to them over the
+#   Compose network and needs no host port for them at all.
+# - Postgres requires a real POSTGRES_PASSWORD (no default). See .env.example.
+# - Redis supports REDIS_PASSWORD (requirepass). Set REDIS_PASSWORD and
+#   REDIS_URL=redis://:<password>@redis:6379 in .env.local to enable auth.
+#   Without it Redis runs without auth, which is only acceptable because the
+#   port is loopback-bound in this file.
+# - For live servers use docker-compose.prod.yml instead: it publishes no
+#   DB/Redis ports at all, requires REDIS_PASSWORD, and gives Postgres
+#   shm_size plus CPU/memory guardrails. See docs/production-deploy.md.
 services:
   app:
     build:
@@ -17,7 +31,9 @@ services:
       - NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL:-/}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - POSTGRES_URL=${POSTGRES_URL:-postgresql://${POSTGRES_USER:-chatbot}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@postgres:5432/${POSTGRES_DB:-chatbot}}
-      - REDIS_URL=redis://redis:6379
+      # Derives auth from REDIS_PASSWORD when set (hex, so URL-safe), so
+      # setting only REDIS_PASSWORD cannot leave the app on a no-auth URL.
+      - REDIS_URL=${REDIS_URL:-redis://${REDIS_PASSWORD:+:${REDIS_PASSWORD}@}redis:6379}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
       - UPLOAD_DIR=/app/uploads
     volumes:
@@ -45,8 +61,34 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-chatbot}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Loopback-only. Remove entirely if you only access Postgres from the app.
     ports:
       - "127.0.0.1:5433:5432"
+    # Default Docker /dev/shm (64mb) is too small for Postgres and causes
+    # parallel-query and vacuum slowdowns. 256MB matches the prod file (#221).
+    shm_size: 256MB
+    # Keep noisy neighbours from starving the DB on shared hosts (#221).
+    # Compose v2 ignores deploy.resources without Swarm, but Docker Desktop
+    # and recent Compose honour cpus/mem_limit below, so set both.
+    cpus: 2.0
+    mem_limit: 2g
+    mem_reservation: 512m
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    # Log checkpoints and autovacuum so host I/O starvation (#221) shows up
+    # in docker logs before it becomes bloat.
+    command:
+      - postgres
+      - -c
+      - log_checkpoints=on
+      - -c
+      - log_autovacuum_min_duration=1000
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatbot} -d ${POSTGRES_DB:-chatbot}"]
       interval: 5s
@@ -56,12 +98,31 @@ services:
 
   redis:
     image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+    env_file:
+      - .env.local
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    # Loopback-only. The app reaches Redis over the Compose network, so this
+    # mapping can be deleted entirely. Never change it to 0.0.0.0 (#217).
     ports:
       - "127.0.0.1:6380:6379"
+    # Enable requirepass when REDIS_PASSWORD is set; run open only for local
+    # dev where the port is loopback-bound. Production must set it (#217).
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$REDIS_PASSWORD" ]; then
+          exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+        else
+          echo "WARNING: REDIS_PASSWORD is empty, starting Redis without auth (dev only, loopback-bound)"
+          exec redis-server --appendonly yes
+        fi
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # REDISCLI_AUTH keeps the password out of the process table (redis-cli -a leaks via ps). #217
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 5
