@@ -176,6 +176,25 @@ export function getCustomProviderOptionsKey(
   );
 }
 
+/**
+ * AI SDK provider-option namespaces must be camelCase; kebab-case keys are
+ * deprecated and will stop being forwarded (warning: "Use 'opencodeGo'
+ * instead"). This mirrors `@ai-sdk/openai-compatible`'s own `toCamelCase`
+ * so the key we emit matches the key the SDK reads during
+ * `parseProviderOptions`. The raw kebab-case value stays in use for
+ * `createOpenAICompatible({ name })`, which is a wire identifier and does
+ * not go through this transformation.
+ */
+export function toCamelCaseNamespace(key: string): string {
+  return key.replace(/[_-]([a-z])/g, (g) => g[1].toUpperCase());
+}
+
+export function getCustomProviderNamespace(
+  provider: Pick<CustomProvider, "providerKey" | "name">
+): string {
+  return toCamelCaseNamespace(getCustomProviderOptionsKey(provider));
+}
+
 export const OPENCODE_GO_SESSION_HEADER = "x-opencode-session";
 
 // OpenCode Go routes by stable per-conversation session id and requires
@@ -232,9 +251,9 @@ export type CustomModelRouting = {
   /** True when the model only works through the Anthropic Messages API. */
   useAnthropicApi: boolean;
   /**
-   * providerOptions namespace for reasoning effort: `"openai"` for
-   * Responses API models, `"anthropic"` for Messages API models,
-   * otherwise the provider-specific key.
+   * camelCase providerOptions namespace for reasoning effort: `"openai"`
+   * for Responses API models, `"anthropic"` for Messages API models,
+   * otherwise the provider-specific key (`opencode-go` → `opencodeGo`).
    */
   providerOptionsKey: string;
   /** Whether to forward reasoning effort via provider options. */
@@ -281,7 +300,7 @@ export async function getCustomModelRouting(
   modelName: string
 ): Promise<CustomModelRouting> {
   const fallback: CustomModelRouting = {
-    providerOptionsKey: getCustomProviderOptionsKey(provider),
+    providerOptionsKey: getCustomProviderNamespace(provider),
     sendReasoningEffort: isOpenAICompatibleProvider(provider),
     useAnthropicApi: false,
     useResponsesApi: false,

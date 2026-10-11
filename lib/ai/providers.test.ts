@@ -86,7 +86,7 @@ describe("getCustomModelRouting", () => {
     await expect(
       getCustomModelRouting({ ...ZEN_PROVIDER }, "kimi-k2.7-code")
     ).resolves.toEqual({
-      providerOptionsKey: "opencode-go",
+      providerOptionsKey: "opencodeGo",
       sendReasoningEffort: true,
       useAnthropicApi: false,
       useResponsesApi: false,
@@ -101,7 +101,7 @@ describe("getCustomModelRouting", () => {
     await expect(
       getCustomModelRouting({ ...ZEN_PROVIDER }, "unknown-model")
     ).resolves.toEqual({
-      providerOptionsKey: "opencode-go",
+      providerOptionsKey: "opencodeGo",
       sendReasoningEffort: true,
       useAnthropicApi: false,
       useResponsesApi: false,
@@ -116,7 +116,7 @@ describe("getCustomModelRouting", () => {
     await expect(
       getCustomModelRouting({ ...ZEN_PROVIDER }, "plain-model")
     ).resolves.toEqual({
-      providerOptionsKey: "opencode-go",
+      providerOptionsKey: "opencodeGo",
       sendReasoningEffort: false,
       useAnthropicApi: false,
       useResponsesApi: false,
@@ -155,11 +155,49 @@ describe("getCustomModelRouting", () => {
     await expect(
       getCustomModelRouting({ ...ZEN_PROVIDER }, "any-model")
     ).resolves.toEqual({
-      providerOptionsKey: "opencode-go",
+      providerOptionsKey: "opencodeGo",
       sendReasoningEffort: true,
       useAnthropicApi: false,
       useResponsesApi: false,
     });
+  });
+});
+
+describe("providerOptions namespace camelCase", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  it("emits camelCase namespaces so the SDK never sees the deprecated key", async () => {
+    const {
+      getCustomModelRouting,
+      getCustomProviderOptionsKey,
+      toCamelCaseNamespace,
+    } = await importRouting(undefined, "@ai-sdk/openai-compatible");
+    const routing = await getCustomModelRouting(
+      { ...ZEN_PROVIDER },
+      "kimi-k2.7-code"
+    );
+    const rawNamespace = getCustomProviderOptionsKey(ZEN_PROVIDER);
+
+    // The SDK warns about a providerOptions key when
+    // `toCamelCase(key) !== key` (i.e. it is still kebab-case). The alias
+    // must never emit that shape.
+    expect(toCamelCaseNamespace(rawNamespace)).not.toBe(rawNamespace);
+    expect(toCamelCaseNamespace(rawNamespace)).toBe("opencodeGo");
+    expect(routing.providerOptionsKey).toBe("opencodeGo");
+    expect(toCamelCaseNamespace(routing.providerOptionsKey)).toBe(
+      routing.providerOptionsKey
+    );
+  });
+
+  it("leaves already-camelCase keys untouched", async () => {
+    const { toCamelCaseNamespace } = await importRouting(undefined);
+    expect(toCamelCaseNamespace("opencodeGo")).toBe("opencodeGo");
+    expect(toCamelCaseNamespace("anthropic")).toBe("anthropic");
+    expect(toCamelCaseNamespace("openrouter")).toBe("openrouter");
+    expect(toCamelCaseNamespace("my_provider")).toBe("myProvider");
   });
 });
 
@@ -190,7 +228,7 @@ describe("buildReasoningCallOptions", () => {
   } as const;
 
   const chatRoute = {
-    providerOptionsKey: "opencode-go",
+    providerOptionsKey: "opencodeGo",
     sendReasoningEffort: true,
     useAnthropicApi: false,
     useResponsesApi: false,
@@ -351,7 +389,7 @@ describe("buildReasoningCallOptions", () => {
         isReasoningModel: true,
       })
     ).toEqual({
-      providerOptions: { "opencode-go": { reasoningEffort: "high" } },
+      providerOptions: { opencodeGo: { reasoningEffort: "high" } },
       reasoning: "high",
     });
     expect(
@@ -360,7 +398,7 @@ describe("buildReasoningCallOptions", () => {
         isReasoningModel: true,
       })
     ).toEqual({
-      providerOptions: { "opencode-go": { reasoningEffort: "max" } },
+      providerOptions: { opencodeGo: { reasoningEffort: "max" } },
       reasoning: undefined,
     });
     expect(
