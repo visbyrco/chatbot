@@ -82,10 +82,25 @@ SELECT checkpoints_timed, checkpoints_req, checkpoint_write_time,
        maxwritten_clean, buffers_backend, buffers_alloc
 FROM pg_stat_bgwriter;
 
--- PG17+ (after a deliberate major-version upgrade)
-SELECT checkpoints_timed, checkpoints_req, restartpoints_timed,
-       last_checkpoint_time, now() AS now
+-- PG17+ (after a deliberate major-version upgrade). Note the renames:
+-- on PG17 the checkpoint counters moved to pg_stat_checkpointer with
+-- new names (num_timed, num_requested, write_time, sync_time,
+-- buffers_written) — the PG16 names do not exist there.
+SELECT num_timed, num_requested,
+       restartpoints_timed, restartpoints_req, restartpoints_done,
+       write_time, sync_time, buffers_written,
+       stats_reset
 FROM pg_stat_checkpointer;
+```
+
+Prefer a version-aware probe over hardcoding one branch, so the next
+monitor author cannot copy-paste the wrong query again:
+
+```sql
+-- Non-null on PG17+, null on PG16 and below.
+SELECT to_regclass('pg_catalog.pg_stat_checkpointer') AS checkpointer_view;
+-- Non-null → query pg_stat_checkpointer (PG17+ columns above);
+-- null → query pg_stat_bgwriter (PG16 columns above).
 ```
 
 Do **not** just change the tag to `postgres:17-alpine` on an existing

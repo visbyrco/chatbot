@@ -20,20 +20,23 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 
 async function waitForPostgres(url, maxAttempts = 0) {
-  // maxAttempts <= 0 means wait indefinitely. A bounded budget caused two
-  // crash-loop restarts after a host reboot while Postgres ran ~3min of
-  // WAL recovery (#227): on `restart: unless-stopped` "not ready yet" is
-  // never a reason to exit 1. Override with POSTGRES_WAIT_MAX_ATTEMPTS
-  // (attempts, ~4s each with the connect timeout + sleep below) when a
-  // hard cap is wanted (e.g. CI).
-  const envCap = Number.parseInt(process.env.POSTGRES_WAIT_MAX_ATTEMPTS ?? "", 10);
-  const cap = Number.isFinite(envCap) && envCap > 0 ? envCap : maxAttempts;
+  // maxAttempts <= 0 (the default), an unset/empty/invalid
+  // POSTGRES_WAIT_MAX_ATTEMPTS, or an explicit "0" all mean the same
+  // thing: wait indefinitely. A bounded budget caused two crash-loop
+  // restarts after a host reboot while Postgres ran ~3min of WAL recovery
+  // (#227): on `restart: unless-stopped` "not ready yet" is never a
+  // reason to exit 1. Set POSTGRES_WAIT_MAX_ATTEMPTS=<n> for a hard cap
+  // of n attempts (~4s each worst-case) when one is wanted (e.g. CI).
+  const rawCap = (process.env.POSTGRES_WAIT_MAX_ATTEMPTS ?? "").trim();
+  const parsedCap = Number.parseInt(rawCap, 10);
+  const cap = Number.isFinite(parsedCap) && parsedCap > 0 ? parsedCap : maxAttempts;
   const bounded = Number.isFinite(cap) && cap > 0;
   console.log(
     bounded
       ? `Waiting for PostgreSQL (up to ${cap} attempts)...`
       : "Waiting for PostgreSQL..."
   );
+  const start = Date.now();
   let attempt = 0;
   for (;;) {
     attempt += 1;
@@ -48,14 +51,23 @@ async function waitForPostgres(url, maxAttempts = 0) {
       return true;
     } catch (err) {
       try { if (connection) await connection.end(); } catch {}
+      const msg = err instanceof Error ? err.message : String(err);
+      // Auth/config errors never resolve by waiting — fail fast with the
+      // cause instead of logging `Attempt N...` forever (#227 review).
+      // A typo in POSTGRES_PASSWORD would otherwise be a silent hang.
+      if (/password authentication failed|role .* does not exist|database .* does not exist|getaddrinfo ENOTFOUND/i.test(msg)) {
+        console.error(`PostgreSQL misconfigured (not retrying): ${msg}`);
+        return false;
+      }
       if (bounded && attempt >= cap) {
-        console.error(`PostgreSQL did not become ready after ${cap} attempts`);
+        console.error(`PostgreSQL did not become ready after ${cap} attempts: ${msg}`);
         return false;
       }
       const label = bounded ? `Attempt ${attempt}/${cap}` : `Attempt ${attempt}`;
-      console.log(`${label}: PostgreSQL not ready, waiting...`);
+      console.log(`${label}: PostgreSQL not ready (${msg}), waiting...`);
       if (!bounded && attempt % 30 === 0) {
-        console.log(`Still waiting for PostgreSQL after ${attempt} attempts (~${attempt * 4}s)...`);
+        const elapsed = Math.round((Date.now() - start) / 1000);
+        console.log(`Still waiting for PostgreSQL after ${attempt} attempts (~${elapsed}s elapsed)...`);
       }
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
