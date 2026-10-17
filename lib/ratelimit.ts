@@ -78,15 +78,59 @@ let client: ReturnType<typeof createClient> | null = null;
 // see `isReady === false` while a healthy Redis is still connecting and get
 // rejected with a spurious 429.
 let connectPromise: Promise<void> | null = null;
-const CONNECT_TIMEOUT_MS = 2000;
+// Bound on awaiting the in-flight initial connect in `rateLimit`.
+// Deliberately shorter than the socket `connectTimeout` below: a slow but
+// healthy connect keeps retrying in the background while requests fail
+// fast (fail-closed) instead of stalling. Raised from 2s to 5s so a
+// healthy Redis under host I/O pressure (#229) is less likely to 429
+// spuriously while still connecting.
+const CONNECT_TIMEOUT_MS = 5000;
+
+/**
+ * Backoff for node-redis reconnects: linear with a floor and jitter.
+ * The `+1` keeps the first retry (retries=0) from hot-looping at 0ms,
+ * the 3s cap bounds the worst case, and the jitter avoids a thundering
+ * herd when N app instances reconnect together. Exported for unit tests.
+ */
+export function redisReconnectStrategy(retries: number): number {
+  const jitter = Math.floor(Math.random() * 100);
+  return Math.min((retries + 1) * 100, 3000) + jitter;
+}
 
 function getClient() {
   if (!client && process.env.REDIS_URL) {
-    client = createClient({ url: process.env.REDIS_URL });
+    // 10s connect timeout: the default (5s) fired once ~90s after boot
+    // during a post-reboot I/O-pressure window against a healthy Redis
+    // (#229). Bounded backoff keeps reconnects visible but not hot.
+    client = createClient({
+      socket: {
+        connectTimeout: 10_000,
+        reconnectStrategy: redisReconnectStrategy,
+      },
+      url: process.env.REDIS_URL,
+    });
     const newClient = client;
+    let hadError = false;
     newClient.on("error", (err) => {
+      hadError = true;
       console.warn("Redis rate-limit client error:", err);
     });
+    // Without this, the only signal after an error is silence — an
+    // operator cannot tell recovery from stuck-fail-closed (#229).
+    newClient.on("ready", () => {
+      if (hadError) {
+        console.log("Redis rate-limit client reconnected after error");
+      } else {
+        console.log("Redis rate-limit client connected");
+      }
+      hadError = false;
+    });
+    newClient.on("reconnecting", () => {
+      console.log("Redis rate-limit client reconnecting...");
+    });
+    // No `end` handler: in node-redis v4 `end` fires only on intentional
+    // quit()/disconnect(), which this client never calls. Unexpected loss
+    // surfaces as `error` + `reconnecting` above.
     connectPromise = newClient
       .connect()
       .then(() => {

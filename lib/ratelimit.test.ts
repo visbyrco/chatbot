@@ -219,4 +219,30 @@ describe("ratelimit", () => {
       expect(RATE_LIMITS[k].windowSeconds).toBe(3600);
     }
   });
+
+  it("redisReconnectStrategy is floored, bounded, and jittered", async () => {
+    vi.doMock("@/lib/constants", () => ({ isTestEnvironment: false }));
+    const { redisReconnectStrategy } = await import("./ratelimit");
+    // First retry must wait instead of hot-looping at 0ms
+    for (let i = 0; i < 20; i += 1) {
+      const d = redisReconnectStrategy(0);
+      expect(d).toBeGreaterThanOrEqual(100);
+      expect(d).toBeLessThan(200);
+    }
+    // Bounded at 3s + jitter, never above
+    for (let i = 0; i < 20; i += 1) {
+      const d = redisReconnectStrategy(1000);
+      expect(d).toBeGreaterThanOrEqual(3000);
+      expect(d).toBeLessThan(3100);
+    }
+    // Linear growth before the cap (compare jitter-free bases)
+    for (const r of [1, 5, 10, 29]) {
+      const base = Math.min((r + 1) * 100, 3000);
+      for (let i = 0; i < 10; i += 1) {
+        const d = redisReconnectStrategy(r);
+        expect(d).toBeGreaterThanOrEqual(base);
+        expect(d).toBeLessThan(base + 100);
+      }
+    }
+  });
 });

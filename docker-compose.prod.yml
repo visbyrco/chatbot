@@ -66,6 +66,12 @@ services:
     restart: unless-stopped
 
   postgres:
+    # Pinned to PG16 on purpose (#228) — same note as docker-compose.yml:
+    # `ERROR: relation "pg_stat_checkpointer" does not exist` in the DB
+    # log is an external monitor running a PG17-shaped query against this
+    # PG16 server (counters live in pg_stat_bgwriter here). Fix the monitor
+    # to be version-aware; a move to PG17+ needs dump/restore, not a tag
+    # bump — see docs/production-deploy.md.
     image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
     env_file:
       - .env.local
