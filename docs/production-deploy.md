@@ -58,6 +58,42 @@ ss -tlnp | grep -E '3001|5433|6380'
 Expect `127.0.0.1:3001` only. If you see `0.0.0.0:5433` or `0.0.0.0:6380`,
 the deploy compose has drifted again.
 
+## Postgres version vs external monitoring (#228)
+
+The deploy pins `postgres:16-alpine`. If the DB log shows
+
+```
+ERROR: relation "pg_stat_checkpointer" does not exist
+STATEMENT: SELECT checkpoints_timed, checkpoints_req, ... FROM pg_stat_checkpointer;
+```
+
+that query is **not from the app** (nothing in this repo references
+`pg_stat_checkpointer`). It is an external monitor/dashboard running a
+Postgres-17-shaped query against this Postgres-16 server:
+`pg_stat_checkpointer` exists only on PG17+; on PG16 the checkpoint
+counters live in `pg_stat_bgwriter`.
+
+Fix the monitor to be version-aware instead of bumping the image tag:
+
+```sql
+-- PG16 (this deployment)
+SELECT checkpoints_timed, checkpoints_req, checkpoint_write_time,
+       checkpoint_sync_time, buffers_checkpoint, buffers_clean,
+       maxwritten_clean, buffers_backend, buffers_alloc
+FROM pg_stat_bgwriter;
+
+-- PG17+ (after a deliberate major-version upgrade)
+SELECT checkpoints_timed, checkpoints_req, restartpoints_timed,
+       last_checkpoint_time, now() AS now
+FROM pg_stat_checkpointer;
+```
+
+Do **not** just change the tag to `postgres:17-alpine` on an existing
+volume: a PG16 data directory will not start under a PG17 server. A
+major-version move needs `pg_dumpall` before the switch and a restore
+after (or `pg_upgrade`), plus a rollback snapshot. Until then, this
+error is a silent metrics gap on the monitoring side, not app data loss.
+
 ## Postgres under host pressure (#221)
 
 The 2026-09-21/22 logs showed `autovacuum worker took too long to start;

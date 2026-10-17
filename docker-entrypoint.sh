@@ -19,24 +19,47 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 
-async function waitForPostgres(url, maxAttempts = 30) {
-  console.log("Waiting for PostgreSQL...");
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+async function waitForPostgres(url, maxAttempts = 0) {
+  // maxAttempts <= 0 means wait indefinitely. A bounded budget caused two
+  // crash-loop restarts after a host reboot while Postgres ran ~3min of
+  // WAL recovery (#227): on `restart: unless-stopped` "not ready yet" is
+  // never a reason to exit 1. Override with POSTGRES_WAIT_MAX_ATTEMPTS
+  // (attempts, ~4s each with the connect timeout + sleep below) when a
+  // hard cap is wanted (e.g. CI).
+  const envCap = Number.parseInt(process.env.POSTGRES_WAIT_MAX_ATTEMPTS ?? "", 10);
+  const cap = Number.isFinite(envCap) && envCap > 0 ? envCap : maxAttempts;
+  const bounded = Number.isFinite(cap) && cap > 0;
+  console.log(
+    bounded
+      ? `Waiting for PostgreSQL (up to ${cap} attempts)...`
+      : "Waiting for PostgreSQL..."
+  );
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
     let connection;
     try {
-      connection = postgres(url, { max: 1 });
+      // connect_timeout keeps each attempt cheap so the loop stays
+      // responsive instead of hanging inside one long connect (#227).
+      connection = postgres(url, { max: 1, connect_timeout: 2 });
       await connection`SELECT 1`;
       await connection.end();
       console.log("PostgreSQL is ready!");
       return true;
     } catch (err) {
       try { if (connection) await connection.end(); } catch {}
-      console.log(`Attempt ${attempt}/${maxAttempts}: PostgreSQL not ready, waiting...`);
+      if (bounded && attempt >= cap) {
+        console.error(`PostgreSQL did not become ready after ${cap} attempts`);
+        return false;
+      }
+      const label = bounded ? `Attempt ${attempt}/${cap}` : `Attempt ${attempt}`;
+      console.log(`${label}: PostgreSQL not ready, waiting...`);
+      if (!bounded && attempt % 30 === 0) {
+        console.log(`Still waiting for PostgreSQL after ${attempt} attempts (~${attempt * 4}s)...`);
+      }
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
-  console.error("PostgreSQL did not become ready in time");
-  return false;
 }
 
 if (!process.env.POSTGRES_URL) {

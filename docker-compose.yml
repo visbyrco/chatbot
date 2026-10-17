@@ -52,6 +52,13 @@ services:
     restart: unless-stopped
 
   postgres:
+    # Pinned to PG16 on purpose (#228). An external monitor querying the
+    # PG17-only view pg_stat_checkpointer logs `ERROR: relation
+    # "pg_stat_checkpointer" does not exist` against this image — that
+    # error comes from outside this repo, not the app. On PG16 the same
+    # counters live in pg_stat_bgwriter; make the monitor version-aware
+    # instead of bumping this tag (a major-version move needs dump/restore,
+    # not a tag change — see docs/production-deploy.md).
     image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
     env_file:
       - .env.local

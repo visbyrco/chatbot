@@ -82,10 +82,37 @@ const CONNECT_TIMEOUT_MS = 2000;
 
 function getClient() {
   if (!client && process.env.REDIS_URL) {
-    client = createClient({ url: process.env.REDIS_URL });
+    // 10s connect timeout: the default (5s) fired once ~90s after boot
+    // during a post-reboot I/O-pressure window against a healthy Redis
+    // (#229). Bounded backoff keeps reconnects visible but not hot.
+    client = createClient({
+      socket: {
+        connectTimeout: 10_000,
+        reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
+      },
+      url: process.env.REDIS_URL,
+    });
     const newClient = client;
+    let hadError = false;
     newClient.on("error", (err) => {
+      hadError = true;
       console.warn("Redis rate-limit client error:", err);
+    });
+    // Without this, the only signal after an error is silence — an
+    // operator cannot tell recovery from stuck-fail-closed (#229).
+    newClient.on("ready", () => {
+      if (hadError) {
+        console.log("Redis rate-limit client reconnected after error");
+      } else {
+        console.log("Redis rate-limit client connected");
+      }
+      hadError = false;
+    });
+    newClient.on("reconnecting", () => {
+      console.log("Redis rate-limit client reconnecting...");
+    });
+    newClient.on("end", () => {
+      console.warn("Redis rate-limit client connection closed");
     });
     connectPromise = newClient
       .connect()
